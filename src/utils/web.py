@@ -288,6 +288,15 @@ def mungeEmail(s):
     s = s.replace('.', ' DOT ')
     return s
 
+def htmlFormatReplacer(s):
+    s = re.sub("<b>([^<]*)</b>", "\x02\\1\x02", s)
+    s = re.sub("<i>([^<]*)</i>", "\x1d\\1\x1d", s)
+    s = re.sub("<u>([^<]*)</u>", "\x1f\\1\x1f", s)
+    s = re.sub("<style[^>]*>[^<]*</style>", "", s)
+    s = re.sub("(<[^<]+>)([^<]*)(<[^<]+>)?", "\\2", s)
+    return s
+
+pb_inst = pastebin.PasteBin()
 
 # vim:set shiftwidth=4 softtabstop=4 expandtab textwidth=79:
 
