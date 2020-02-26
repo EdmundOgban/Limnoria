@@ -337,7 +337,8 @@ class Google(callbacks.PluginRegexp):
     _calcRe2 = re.compile(r'<div class="vk_ans.*?>(.*?)</div>', re.I | re.S)
     _calcRe3 = re.compile(r'<div class="side_div" id="rhs_div">.*?<input class="ucw_data".*?value="(.*?)"', re.I)
     @internationalizeDocstring
-    def calc(self, irc, msg, args, expr):
+    @wrap(['text'])
+    def gcalc(self, irc, msg, args, expr):
         """<expression>
 
         Uses Google's calculator to calculate the value of <expression>.
@@ -364,7 +365,6 @@ class Google(callbacks.PluginRegexp):
         s = re.sub(r'<sup>(.*)</sup>', r'^\1', s)
         s = utils.web.htmlToText(s)
         irc.reply("%s = %s" % (expr, s))
-    calc = wrap(calc, ['text'])
 
     _phoneRe = re.compile(r'Phonebook.*?<font size=-1>(.*?)<a href')
     @internationalizeDocstring
