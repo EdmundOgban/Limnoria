@@ -123,6 +123,14 @@ conf.registerChannelValue(Google, 'maximumResults',
 conf.registerChannelValue(Google, 'defaultLanguage',
     Language('lang_'+ _('en'), _("""Determines what default language is used in
     searches.  If left empty, no specific language will be requested.""")))
+conf.registerChannelValue(
+    Google, 'sourceLang',
+    registry.String('auto', _("""Determines what default language is used as a 
+    from-language in Google Translate.""")))
+conf.registerChannelValue(
+    Google, 'targetLang',
+    registry.String('en', _("""Determines what default language is used as a 
+    to-language in Google Translate.""")))
 conf.registerChannelValue(Google, 'searchFilter',
     SafeSearch('moderate', _("""Determines what level of search filtering to use
     by default.  'active' - most filtering, 'moderate' - default filtering,

@@ -287,18 +287,33 @@ class Google(callbacks.PluginRegexp):
         else:
             return (_('No translations found.'), language)
 
+    _rex = re.compile('(?:(auto|{0})?[|-]({0})?\s+)?(.+)'.format('[a-z]{2}(?:-[A-Z]{2})?'))
     @internationalizeDocstring
-    def translate(self, irc, msg, args, sourceLang, targetLang, text):
-        """<source language> [to] <target language> <text>
+    @wrap(["channeldb", "text"])
+    def tr(self, irc, msg, args, channel, text):
+        """[source language]-<target language> <text>
 
         Returns <text> translated from <source language> into <target
         language>. <source language> and <target language> take language
         codes (not language names), which are listed here:
         https://cloud.google.com/translate/docs/languages
         """
-        (text, language) = self._translate(sourceLang, targetLang, text)
-        irc.reply(text, language)
-    translate = wrap(translate, ['something', 'to', 'something', 'text'])
+
+        sourceLang, targetLang = (
+            self.registryValue('sourceLang', channel) or "auto",
+            self.registryValue('targetLang', channel) or "en")
+
+        sl, tl, text = self._rex.match(text).groups()
+        if sl and sl in tr_langs.langs:
+            sourceLang = sl
+        if tl and tl in tr_langs.langs:
+            targetLang = tl
+
+        translated, language = self._translate(sourceLang, targetLang, text)
+
+        s = "Translate %s\N{rightwards arrow}%s (%s): %s" % (
+            language, targetLang, utils.str.shorten(text, 25), translated)
+        irc.reply(s, language)
 
     def googleSnarfer(self, irc, msg, match):
         r"^google\s+(.*)$"
