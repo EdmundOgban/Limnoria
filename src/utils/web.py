@@ -40,6 +40,7 @@ except AttributeError:
 
 from .str import normalizeWhitespace
 from . import minisix
+from . import pastebin
 
 if minisix.PY2:
     import urllib
