@@ -317,7 +317,7 @@ class Random(callbacks.Plugin):
         irc.reply(rand.rand(text))
 
     @wrap([('checkcapability', 'trusted'),
-        'unicodeSomethingWithoutSpaces', 'text'])
+        'somethingWithoutSpaces', 'text'])
     def rnadd(self, irc, msg, args, nick, text):
         """ <nick> <Rscript> """
         nick = _sanitize_nick(nick)
@@ -326,7 +326,7 @@ class Random(callbacks.Plugin):
             self.kdb.synchronize(True)
             irc.reply(rand.rand(text))
 
-    @wrap([('checkcapability', 'trusted'), 'unicodeSomethingWithoutSpaces'])
+    @wrap([('checkcapability', 'trusted'), 'somethingWithoutSpaces'])
     def rndel(self, irc, msg, args, nick):
         """ <nick> """
         nick = _sanitize_nick(nick)
@@ -366,7 +366,7 @@ class Random(callbacks.Plugin):
        else:
            irc.reply("No randnicks available.", prefixNick=True)
 
-    @wrap(['unicodeSomethingWithoutSpaces'])
+    @wrap(['somethingWithoutSpaces'])
     def rnshow(self, irc, msg, args, nick):
         """ <nick> """
         sanitized_nick = _sanitize_nick(nick)
