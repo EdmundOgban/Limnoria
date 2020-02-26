@@ -299,7 +299,7 @@ class Random(callbacks.Plugin):
         self.updater = UpdaterThread(self.jamumgr)
         self.updater.start()
 
-    @wrap(["unicodetext"])
+    @wrap(["text"])
     def randre(self, irc, msg, args, text):
         """ <regex> """
         irc.reply(randre.randre(text))
@@ -309,7 +309,7 @@ class Random(callbacks.Plugin):
         text = self.jamumgr._pre_filter(hiras)
         irc.reply(text)
 
-    @wrap(["unicodetext"])
+    @wrap(["text"])
     def rand(self, irc, msg, args, text):
         """ <Rscript>
     
@@ -317,7 +317,7 @@ class Random(callbacks.Plugin):
         irc.reply(rand.rand(text))
 
     @wrap([('checkcapability', 'trusted'),
-        'unicodeSomethingWithoutSpaces', 'unicodetext'])
+        'unicodeSomethingWithoutSpaces', 'text'])
     def rnadd(self, irc, msg, args, nick, text):
         """ <nick> <Rscript> """
         nick = _sanitize_nick(nick)
@@ -336,7 +336,7 @@ class Random(callbacks.Plugin):
         else:
             irc.error(("No '%s' found." % nick))
 
-    @wrap([optional('unicodetext')])
+    @wrap([optional('text')])
     def rnick(self, irc, msg, args, text):
         """ <nick> """
         rest = ""
@@ -476,7 +476,7 @@ class Random(callbacks.Plugin):
 
         irc.sendMsg(ircmsgs.privmsg(channel, text))
 
-    @wrap([("checkcapability", "owner"), "somethingWithoutSpaces", "unicodetext"])
+    @wrap([("checkcapability", "owner"), "somethingWithoutSpaces", "text"])
     def jamupush(self, irc, msg, args, lang, jamu):
         """ <lang> <jamu> """
 

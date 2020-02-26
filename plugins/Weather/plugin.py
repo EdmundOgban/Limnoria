@@ -52,7 +52,7 @@ class Weather(callbacks.Plugin):
     """Accuweather forecast and minutecast"""
     threaded = True
 
-    @wrap(["channeldb", "unicodetext"])
+    @wrap(["channeldb", "text"])
     def weather(self, irc, msg, args, channel, location):
         """ <location>
         Accuweather forecast for <location> """
@@ -65,7 +65,7 @@ class Weather(callbacks.Plugin):
         else:
             bailout(irc)
 
-    @wrap(["unicodetext"])
+    @wrap(["text"])
     def meteo(self, irc, msg, args, location):
         """ <location>
         Accuweather forecast for <location> """
@@ -77,7 +77,7 @@ class Weather(callbacks.Plugin):
         else:
             bailout(irc)
 
-    @wrap(["channeldb", "unicodetext"])
+    @wrap(["channeldb", "text"])
     def minutecast(self, irc, msg, args, channel, location):
         """ <location>
         Accuweather minutecast for <location> """

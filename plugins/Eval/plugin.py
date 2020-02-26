@@ -176,7 +176,7 @@ class Eval(callbacks.Plugin):
                     irc.reply(line)
             urlh.close()
 
-    #polygen = wrap(polygen, ['unicodetext'])
+    #polygen = wrap(polygen, ['text'])
 
     cons = code.InteractiveConsole()
     def clear(self, irc, msg, args):

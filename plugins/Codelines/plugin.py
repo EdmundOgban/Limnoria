@@ -80,7 +80,7 @@ class Codelines(callbacks.Plugin):
             dst = msg.nick
         irc.reply(('slaps %s around a bit with a reincarnation '
                   'of an Imperial Attack Spaceturtle' % dst), action=True)
-    slap = wrap(slap, ['unicodetext'])
+    slap = wrap(slap, ['text'])
 
     def codelines(self, irc, msg, args):
         """ : Counts code lines. """
