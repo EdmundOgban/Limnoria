@@ -61,9 +61,9 @@ from random import randint, choice
 from bs4 import BeautifulSoup as BS
 from base64 import urlsafe_b64encode, urlsafe_b64decode
 
-from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey, X25519PublicKey
-from cryptography.hazmat.primitives.ciphers.aead import AESGCM
-import cryptography.exceptions
+# from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey, X25519PublicKey
+# from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+# import cryptography.exceptions
 
 def decode_authenticated_message(key, authmessage, tag=None, separator='.'):
     aesgcm = AESGCM(key)
@@ -110,7 +110,7 @@ class Eval(callbacks.Plugin):
 
         MAX_LINES = 6
 
-        cat = utils.str.uncolorize(text.lower())
+        cat = ircutils.stripFormatting(text.lower())
         valid_cats = fillCategories()
         sorted_cats = sorted(valid_cats.keys())
    
@@ -232,53 +232,53 @@ class Eval(callbacks.Plugin):
         else: irc.reply(r)
     greetz = wrap(greetz, [optional(getopts({'dst': 'something'})), optional('text')])
 
-    @wrap([('checkCapability', 'ilbotto'), "somethingWithoutSpaces", "text"])
-    def ilbotto(self, irc, msg, args, cmd, text):
-        """ <cmd> <text> """
-        try:
-            irclib.il_botto(cmd, text)
-        except requests.exceptions.ReadTimeout:
-            irc.error("Timed out.", prefixNick=True)
+    # @wrap([('checkCapability', 'ilbotto'), "somethingWithoutSpaces", "text"])
+    # def ilbotto(self, irc, msg, args, cmd, text):
+        # """ <cmd> <text> """
+        # try:
+            # irclib.il_botto(cmd, text)
+        # except requests.exceptions.ReadTimeout:
+            # irc.error("Timed out.", prefixNick=True)
 
-    @wrap([('checkCapability', 'ilbotto'), "somethingWithoutSpaces"])
-    def ilheader(self, irc, msg, args, header):
-        """ """
-        irclib.il_header = header
+    # @wrap([('checkCapability', 'ilbotto'), "somethingWithoutSpaces"])
+    # def ilheader(self, irc, msg, args, header):
+        # """ """
+        # irclib.il_header = header
 
-    @wrap(["somethingWithoutSpaces"])
-    def iltoken(self, irc, msg, args, token):
-        """ """
-        key = "HNfOHAo6LwNKTU4UFLqYTeJY7-pWNYH_DgA1ko99dmA="
-        try:
-            plaintext = decode_authenticated_message(
-                urlsafe_b64decode(key), token, codecs.decode("obggb_gbxra", "rot13").encode())
-        except (cryptography.exceptions.InvalidTag, cryptography.exceptions.InvalidKey):
-            log.error("Invalid tag or key provided.")
-        else:
-            irclib.il_token = plaintext
-            irclib.il_ctoken = token
+    # @wrap(["somethingWithoutSpaces"])
+    # def iltoken(self, irc, msg, args, token):
+        # """ """
+        # key = "HNfOHAo6LwNKTU4UFLqYTeJY7-pWNYH_DgA1ko99dmA="
+        # try:
+            # plaintext = decode_authenticated_message(
+                # urlsafe_b64decode(key), token, codecs.decode("obggb_gbxra", "rot13").encode())
+        # except (cryptography.exceptions.InvalidTag, cryptography.exceptions.InvalidKey):
+            # log.error("Invalid tag or key provided.")
+        # else:
+            # irclib.il_token = plaintext
+            # irclib.il_ctoken = token
 
-    @wrap([('checkCapability', 'ilbotto'), optional("boolean")])
-    def ilfunziona(self, irc, msg, args, vanonva):
-        """ <bool> """
-        if vanonva is None:
-            irc.reply("on" if irclib.il_funziona else "off")
-        else:
-            irclib.il_funziona = vanonva
+    # @wrap([('checkCapability', 'ilbotto'), optional("boolean")])
+    # def ilfunziona(self, irc, msg, args, vanonva):
+        # """ <bool> """
+        # if vanonva is None:
+            # irc.reply("on" if irclib.il_funziona else "off")
+        # else:
+            # irclib.il_funziona = vanonva
 
-    @wrap([('checkCapability', 'ilbotto')])
-    def ilgettoken(self, irc, msg, args):
-        """ """
-        if not irclib.il_token:
-            return irc.reply("My mind is a blank.", private=True)
-        head, payload, secret = irclib.il_token.split(b".")
-        # restore padding if missing
-        payload += b'=' * (-len(payload) % 4)
-        payload = json.loads(urlsafe_b64decode(payload))
-        irc.reply("iat:{} exp:{} tkn:{}".format(
-                datetime.fromtimestamp(payload['iat']).isoformat(),
-                datetime.fromtimestamp(payload['exp']).isoformat(),
-                irclib.il_ctoken), private=True)
+    # @wrap([('checkCapability', 'ilbotto')])
+    # def ilgettoken(self, irc, msg, args):
+        # """ """
+        # if not irclib.il_token:
+            # return irc.reply("My mind is a blank.", private=True)
+        # head, payload, secret = irclib.il_token.split(b".")
+        # # restore padding if missing
+        # payload += b'=' * (-len(payload) % 4)
+        # payload = json.loads(urlsafe_b64decode(payload))
+        # irc.reply("iat:{} exp:{} tkn:{}".format(
+                # datetime.fromtimestamp(payload['iat']).isoformat(),
+                # datetime.fromtimestamp(payload['exp']).isoformat(),
+                # irclib.il_ctoken), private=True)
 
 
 Class = Eval
