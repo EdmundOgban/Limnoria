@@ -635,4 +635,30 @@ def format(s, *args, **kwargs):
     except IndexError:
         raise ValueError('Extra format chars in format spec: %r' % s)
 
+def shorten(s, max_length=50, sep="..."):
+    if len(s) <= max_length:
+        return s
+
+    seplen = len(sep)
+    if max_length < seplen+2:
+        max_length = seplen+2
+
+    half_length = (max_length-seplen)/2.0
+    lowerb = int(math.floor(half_length))
+    upperb = int(math.ceil(half_length))
+
+    return sep.join([s[:lowerb], s[-upperb:]])
+
+def try_coding(s):
+    if isinstance(s, bytes):
+        if charadeLoaded:
+            s = decode_raw_line(s)
+        else:
+            try:
+                s = str(s, 'utf8')
+            except UnicodeDecodeError:
+                s = str(s, 'iso-8859-1')
+
+    return s
+
 # vim:set shiftwidth=4 softtabstop=4 expandtab textwidth=79:
