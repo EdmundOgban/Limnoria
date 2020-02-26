@@ -45,6 +45,8 @@ import supybot.callbacks as callbacks
 from supybot.i18n import PluginInternationalization, internationalizeDocstring
 _ = PluginInternationalization('String')
 
+from . import passgen
+
 import multiprocessing
 
 class String(callbacks.Plugin):
@@ -243,6 +245,16 @@ class String(callbacks.Plugin):
         """
         irc.reply(utils.crypt.sha(text.encode('utf8')).hexdigest())
     sha = wrap(sha, ['text'])
+
+    @wrap(['long', optional('long')])
+    def passgen(self, irc, msg, args, length, cnt):
+        """ <length> <passwords_cnt>"""
+        if cnt is None:
+            cnt = 1
+        res = []
+        for i in range(cnt):
+            res.append(gen.passgen(length))
+        irc.reply(", ".join(res))
 
 Class = String
 
