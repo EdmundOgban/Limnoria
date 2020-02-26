@@ -1,8 +1,11 @@
 import os
 
+import supybot.conf as conf
+
+
 class WordsDBManager:
     def __init__(self, fname="parole_uniche.txt"):
-        fname = os.path.join(os.path.expanduser("~/supybot"), fname)
+        fname = conf.supybot.directories.data.dirize(fname)
         self.fname = fname
         self.populate_words_db()
 
