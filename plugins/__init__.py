@@ -80,6 +80,8 @@ def makeChannelFilename(filename, channel=None, dirname=None):
     channelSpecific = conf.supybot.databases.plugins.channelSpecific
     channel = channelSpecific.getChannelLink(channel)
     channel = utils.file.sanitizeName(ircutils.toLower(channel))
+    if channel.startswith("#") and len(channel) > 1:
+        channel = channel[1:]
     if dirname is None:
         dirname = conf.supybot.directories.data.dirize(channel)
     if not os.path.exists(dirname):
