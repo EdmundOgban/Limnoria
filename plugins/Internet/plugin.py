@@ -283,10 +283,8 @@ class Internet(callbacks.Plugin):
 
         while True:
             data = urlh.read(chunksize)
-
             if data == b'':
                 break
-
             buf += data
 
             yield buf
@@ -330,12 +328,10 @@ class Internet(callbacks.Plugin):
 
         last_url = self._last_url.get(channel)
         url = self._address_or_lasturl(address, last_url)
-
         if url is None:
             return
 
         title = self._title(url)
-
         if title:
             irc.reply(title)
 
