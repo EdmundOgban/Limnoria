@@ -45,7 +45,7 @@ import supybot.callbacks as callbacks
 from supybot.i18n import PluginInternationalization, internationalizeDocstring
 _ = PluginInternationalization('String')
 
-from . import passgen
+from . import gen
 
 import multiprocessing
 
