@@ -1,0 +1,261 @@
+###
+# Copyright (c) 2017, Edmund Ogban
+# All rights reserved.
+#
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are met:
+#
+#   * Redistributions of source code must retain the above copyright notice,
+#     this list of conditions, and the following disclaimer.
+#   * Redistributions in binary form must reproduce the above copyright notice,
+#     this list of conditions, and the following disclaimer in the
+#     documentation and/or other materials provided with the distribution.
+#   * Neither the name of the author of this software nor the name of
+#     contributors to this software may be used to endorse or promote products
+#     derived from this software without specific prior written consent.
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+# ARE DISCLAIMED.  IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE
+# LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+# CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+# SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+# INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+# CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+# ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+# POSSIBILITY OF SUCH DAMAGE.
+
+###
+
+import supybot.utils as utils
+from supybot.commands import *
+import supybot.plugins as plugins
+import supybot.ircutils as ircutils
+import supybot.callbacks as callbacks
+try:
+    from supybot.i18n import PluginInternationalization
+    _ = PluginInternationalization('Eval')
+except ImportError:
+    # Placeholder that allows to run the plugin on a bot
+    # without the i18n module
+    _ = lambda x: x
+
+import cStringIO
+import code
+import re
+import sys
+import traceback
+import urllib
+import time
+import pastebin
+
+from subprocess import Popen, PIPE
+from random import randint, choice
+from bs4 import BeautifulSoup as BS
+
+class str_utils:
+    @staticmethod
+    def uncolorize(s, strip="burc"):
+        if "b" in strip:
+            s = s.replace("\x02", "")
+        if "u" in strip:
+            s = s.replace("\x1f", "")
+        if "r" in strip:
+            s = s.replace("\x16", "")
+        if "c" in strip:
+            s = re.sub(
+                r"\x03(?:(?:1[0-6]|0?[0-9])(?:,(?:1[0-6]|0?[0-9]))?)?",
+                "",
+                s
+            )
+        return s
+    @staticmethod
+    def htmlFormatReplacer(s):
+        s = re.sub("<b>([^<]*)</b>", "\x02\\1\x02", s)
+        s = re.sub("<i>([^<]*)</i>", "\x1d\\1\x1d", s)
+        s = re.sub("<u>([^<]*)</u>", "\x1f\\1\x1f", s)
+        s = re.sub("<style[^>]*>[^<]*</style>", "", s)
+        s = re.sub("(<[^<]+>)([^<]*)(<[^<]+>)?", "\\2", s)
+        return s
+
+
+class Eval(callbacks.Plugin):
+    """Add the help for "@plugin help Eval" here
+    This should describe *how* to use this plugin."""
+
+    def __init__(self, *args, **kwargs):
+        super(Eval, self).__init__(*args, **kwargs)
+        self.pb = pastebin.PasteBin()
+
+    def polygen(self, irc, msg, args):
+        """ Polygen. """
+
+        def fillCategories():
+            d = {}
+            soup = BS(urllib.urlopen("http://polygen.org/it"))
+            for elem in soup.findAll("div", {"class": "accordion-grammar"}):
+                href = elem.a["href"]
+                cat = href.rsplit("/", 1)[1].rsplit(".", 1)[0]
+                d[cat] = href
+            return d
+
+        try:
+            text = args[0]
+        except IndexError:
+            text = ""
+
+        try:
+            opt, text = text.split(">", 1)
+        except ValueError:
+            opt = ""
+
+        MAX_LINES = 6
+
+        cat = str_utils.uncolorize(text.lower())
+        valid_cats = fillCategories()
+        sorted_cats = sorted(valid_cats.keys())
+   
+        if cat in ("", "help"):
+            try:
+                s = u"* Polygen: available categories\n . %s" % "\n . ".join(sorted_cats)
+                pasteurl = self.pb.paste(s, title="Polygen help")
+            except (pastebin.BadAPIRequestError, pastebin.YouShallNotPasteError):
+                pasteurl = None
+            except pastebin.PostLimitError:
+                pasteurl = None
+            else:
+                irc.reply("available Polygen categories: %s" % pasteurl, prefixNick=True)
+
+            if not pasteurl:
+                irc.reply(format('Valid categories are: %L', sorted_cats))
+        else:
+            if cat == "random":
+                cat = choice(valid_cats.keys())
+                random_cat = True
+            else:
+                random_cat = False
+
+            if cat not in valid_cats:
+                irc.error('Invalid category: %s' % cat)
+                return
+
+            urlh = urllib.urlopen('http://polygen.org%s' % valid_cats[cat])
+            bs = BS(urlh, convertEntities=BS.HTML_ENTITIES)                
+            soup = bs.find("div", {"class": "generation"})
+
+            if not soup:
+                irc.error("Cannot retrieve category '%s'." % cat)
+                return
+
+            out = []
+
+            if random_cat:
+                out.append("Polygen('%s')" % cat)
+                MAX_LINES += 1
+
+            for line in soup.renderContents().split('<br />'):
+                line = str_utils.htmlFormatReplacer(line.strip())
+                out.append(line.decode("utf8")) if len(line) > 0 else None
+
+            outlen = len(out)
+            totchars = sum(len(line) for line in out)
+            if outlen > MAX_LINES or totchars > 800 or opt == 'paste':
+                title = "%s - <%s> &polygen %s" % (time.strftime("%Y/%m/%d %H:%M:%S"), msg.nick, cat)
+                try:
+                    s = (u"\n").join(out)
+                    pasteurl = self.pb.paste(s.encode('utf8'), title=title, expire_in="1H")
+                except (pastebin.YouShallNotPasteError, pastebin.PostLimitError):
+                    irc.error("Refusing to paste %s here." % (
+                        ("%d lines" % outlen) if outlen > MAX_LINES else ("%d chars" % totchars))
+                    )
+                except pastebin.BadAPIRequestError, e:
+                    irc.error(str(e))
+                else:
+                    irc.reply("look at %s (%d lines long)" % (pasteurl, outlen), prefixNick=True)
+            else:
+                for line in out:
+                    irc.reply(line)
+            urlh.close()
+
+    #polygen = wrap(polygen, ['unicodetext'])
+
+    cons = code.InteractiveConsole()
+    def clear(self, irc, msg, args):
+        self.cons = code.InteractiveConsole()
+    clear = wrap(clear, ['owner'])
+
+    def run(self, irc, msg, args, text):
+        def cformat(s):
+            return map(lambda x: x.replace('\x09', '\xa0\xa0'),
+                       filter(lambda y: y, ''.join(s).split('\n')))
+
+        try:
+            sh, cmd = text.split('>', 1)
+            if sh == 'sh':
+                sh = True
+            else:
+                raise ValueError
+        except ValueError:
+            sh, cmd = (False, text.split())
+
+        res = Popen(cmd, stdout=PIPE, stderr=PIPE, shell=sh)
+        for line in res.stdout.readlines():
+            line = line.strip().replace('\x09', '\xa0'*2)
+            if line:
+                irc.reply('%s' % line)
+
+    run = wrap(run, ['owner', 'text'])
+
+    def py(self, irc, msg, args, text):
+        """ Evaluates a Python code string using code module. """
+        def cformat(s):
+            return s.strip().split('\n')
+
+        outputted = 0
+        mystdout = cStringIO.StringIO()
+        mystderr = cStringIO.StringIO()
+        oldstdout = sys.stdout
+        oldstderr = sys.stderr
+        sys.stdout = mystdout
+        sys.stderr = mystderr
+        try:
+            self.cons.push(text+'\n')
+            err = cformat(mystderr.getvalue())[-1]
+            if err:
+                irc.error("%s" % err)
+                return
+            res = cformat(mystdout.getvalue())
+            for s in res:
+                if s:
+                    outputted = 1
+                    irc.reply("%s" % s, prefixNick=False)
+            if not outputted:
+                irc.reply("No output.")
+        except:
+            irc.reply("%s" % cformat(traceback.format_exc(0))[-1])
+        finally:
+            sys.stdout = oldstdout
+            sys.stderr = oldstderr
+
+    py = wrap(py, ['owner', 'text'])
+
+    def greetz(self, irc, msg, args, opt, text):
+        """ Greets someone """
+        #opt = dict(opt)
+        #dst = opt['dst'] if 'dst' in opt else None
+        dst = None
+        if text:
+            text = text.split()
+            r = '%s ' % text[0][:30]
+        else:
+            r = ''
+        r += '%s' % (''.join(('ò' if randint(0, 1) else '\\') for i in xrange(randint(2, 15))))
+        if dst: irc.reply(r, to=dst, private=True)
+        else: irc.reply(r)
+    greetz = wrap(greetz, [optional(getopts({'dst': 'something'})), optional('text')])
+
+Class = Eval
+
+
+# vim:set shiftwidth=4 softtabstop=4 expandtab textwidth=79:

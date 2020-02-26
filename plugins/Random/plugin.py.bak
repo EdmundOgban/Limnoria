@@ -1,0 +1,236 @@
+###
+# Copyright (c) 2017, Edmund Ogban
+# All rights reserved.
+#
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are met:
+#
+#   * Redistributions of source code must retain the above copyright notice,
+#     this list of conditions, and the following disclaimer.
+#   * Redistributions in binary form must reproduce the above copyright notice,
+#     this list of conditions, and the following disclaimer in the
+#     documentation and/or other materials provided with the distribution.
+#   * Neither the name of the author of this software nor the name of
+#     contributors to this software may be used to endorse or promote products
+#     derived from this software without specific prior written consent.
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+# ARE DISCLAIMED.  IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE
+# LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+# CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+# SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+# INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+# CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+# ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+# POSSIBILITY OF SUCH DAMAGE.
+
+###
+
+import supybot.utils as utils
+from supybot.commands import *
+import supybot.plugins as plugins
+import supybot.ircutils as ircutils
+import supybot.callbacks as callbacks
+import supybot.plugins.Google.tr_langs as tr_langs
+try:
+    from supybot.i18n import PluginInternationalization
+    _ = PluginInternationalization('Random')
+except ImportError:
+    # Placeholder that allows to run the plugin on a bot
+    # without the i18n module
+    _ = lambda x: x
+
+import supybot.conf as conf
+
+import kyotocabinet
+import os
+import random
+import string
+import re
+from time import sleep
+
+from . import rand
+from . import randre
+from . import wordsdbmgr
+
+class Visitor(kyotocabinet.Visitor):
+    def __init__(self, attrib="keys", *args, **kwargs):
+        super(Visitor, self).__init__(*args, **kwargs)
+        self.attrib = attrib
+        self.content = []
+    def visit_full(self, k, v):
+        if self.attrib == "keys":
+            self.content.append(k.decode())
+        elif self.attrib == "values":
+            self.content.append(v.decode())
+        else:
+            self.content.append((k.decode(), v.decode()))
+
+def _db_get_content(db, visitor):
+    db.iterate(visitor)
+    return visitor.content
+
+def db_get_keys(db):
+    return _db_get_content(db, Visitor("keys"))
+
+def db_get_values(db):
+    return _db_get_content(db, Visitor("values"))
+
+def _sanitize_nick(nick):
+    return ''.join(c for c in nick.lower()
+        if c in string.ascii_lowercase or c.isdigit())
+
+class Random(callbacks.Plugin):
+    """Add the help for "@plugin help Random" here
+    This should describe *how* to use this plugin."""
+    threaded = True
+
+    def __init__(self, *args, **kwargs):
+        super(Random, self).__init__(*args, **kwargs)
+        db_path = conf.supybot.directories.data.dirize('rnick.db.kch')
+        self.kdb = kyotocabinet.DB()
+        self.wdbmgr = wordsdbmgr.WordsDBManager()
+        if not self.kdb.open(db_path, kyotocabinet.DB.OWRITER | kyotocabinet.DB.OCREATE):
+            e_str = "Unable to open KyotoCabinet DB ('%s')" % db_path
+            log.error(e_str)
+            raise IOException(e_str)
+
+    @wrap(["unicodetext"])
+    def randre(self, irc, msg, args, text):
+        """ <regex> """
+        irc.reply(randre.randre(text))
+
+    def jamure(self, irc, msg, args):
+        irc.reply(randre.randre("[\u3041-\u3096]+"))
+
+    def rand(self, irc, msg, args, text):
+        """ <text>
+    
+        TODO: write the grammar definition. """
+        irc.reply(rand.rand(text))
+    rand = wrap(rand, ['unicodetext'])
+
+    def addrn(self, irc, msg, args, nick, text):
+        """ <nick> <randscript> """
+        nick = _sanitize_nick(nick)
+        if nick:
+            self.kdb.set(nick, text)
+            self.kdb.synchronize(True)
+            irc.reply(rand.rand(text))
+    addrn = wrap(addrn, [('checkcapability', 'trusted'),
+        'unicodeSomethingWithoutSpaces', 'unicodetext'])
+
+    def delrn(self, irc, msg, args, nick):
+        """ <nick> """
+        nick = _sanitize_nick(nick)
+        if self.kdb.check(nick) != -1:
+            self.kdb.remove(nick)
+            self.kdb.synchronize(True)
+        else:
+            irc.error(("No '%s' found." % nick))
+    delrn = wrap(delrn, [('checkcapability', 'trusted'), 'unicodeSomethingWithoutSpaces'])
+
+    def rnick(self, irc, msg, args, text):
+        """ <nick> """
+        rest = ""
+        if text:
+            text = rand.rand(text, zero_depth=False)
+            try:
+                nick, rest = text.strip().split(" ", 1)
+            except ValueError:
+                nick, rest = text, ""
+
+            nick = _sanitize_nick(nick)
+            if self.kdb.check(nick):
+                rstring = self.kdb.get_str(nick)
+        elif self.kdb.count() > 0:
+            rstring = random.choice(db_get_values(self.kdb))
+        else:
+            rstring = None
+
+        if rstring:
+            irc.reply(("%s%s!" % (rand.rand(rstring), rest)))
+    rnick = wrap(rnick, [optional('unicodetext')])
+
+    def listrn(self, irc, msg, args):
+       rnicks = db_get_keys(self.kdb)
+       if rnicks:
+           irc.reply(utils.str.commaAndify(rnicks))
+       else:
+           irc.reply("No randnicks available.", prefixNick=True)
+
+    def showrn(self, irc, msg, args, nick):
+        """ <nick> """
+        sanified_nick = _sanitize_nick(nick)
+        rstring = self.kdb.get_str(sanified_nick)
+        if rstring:
+            irc.reply(("Rcode for %s: %s" % (nick, rstring)))
+    showrn = wrap(showrn, ['unicodeSomethingWithoutSpaces'])
+
+    def remtrail(self, irc, msg, args):
+        for k, v in _db_get_content(self.kdb, Visitor('items')):
+            if v.endswith('!'):
+                self.kdb[k] = v[:-1]
+
+    @wrap
+    def entropy(self, irc, msg, args):
+        """: shows how many entropy bits the system has available. """
+        with open("/proc/sys/kernel/random/entropy_avail") as f:
+            irc.reply(f.read().strip())
+
+    def _jamu(self, irc, msg, to_lang, seed=None):
+        callbacks = {callback.name(): callback for callback in irc.callbacks}
+
+        try:
+            google = callbacks["Google"]
+        except KeyError:
+            irc.error("Google Translate plugin is not loaded.")
+        else:
+            if to_lang not in tr_langs.langs:
+                to_lang = 'it'
+
+            hira = ('あいうえおかがきぎくぐけげこごさざしじすずせぜそぞ'
+                    'ただちぢつづてでとどなにぬねのはばぱひびぴふぶぷへべぺほ'
+                    'ぼぽまみむめもゃやゅゆょよらりるれろわをんゔ')
+            yoons = 'きぎき゚ひびぴしじちにみり'
+            smalls = 'ゃゅょ'
+
+            rre = randre.randre('[%s]{6,50}' % hira)
+            rre = re.sub(u'(.)[{}]'.format(smalls),
+                lambda m: m.group(0) if m.group(1) in yoons else m.group(1),
+                rre)
+
+            text, lang = google._translate('ja', to_lang, rre)
+
+            return ' '.join(text.split())
+
+    @wrap([optional("int"), additional("somethingWithoutSpaces")])
+    def jamu(self, irc, msg, args, seed, lang):
+        """ [lang] """
+        score = 0.0
+        acceptable_score = 0.65
+
+        while True:
+            text = self._jamu(irc, msg, lang, seed).strip(",;:'\"")
+            text = ''.join(c for c in text if ord(c) < 0x0500 and c not in {'0', '_'})
+            words = text.split()
+
+            if lang and lang != "it":
+                if (len(words) > 2 and
+                    sum(1 for word in words if word.istitle()) <= len(words)/2.):
+                    break
+            else:
+                score = self.wdbmgr.calculate_score(text)
+
+                if score > acceptable_score and len(words) > 4:
+                    break
+
+        #irc.reply("%s (%.3f)" % (text, score))
+        irc.reply(text)
+
+Class = Random
+
+
+# vim:set shiftwidth=4 softtabstop=4 expandtab textwidth=79:

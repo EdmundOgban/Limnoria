@@ -1,0 +1,513 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<link rel="shortcut icon" href="/sites/all/themes/meteoam/favicon.ico" type="image/vnd.microsoft.icon" />
+<meta name="Generator" content="Drupal 7 (http://drupal.org)" />
+<link rel="canonical" href="http://www.meteoam.it/metar" />
+  <title>Metar e Taf Mondo | MeteoAM.it - Servizio Meteorologico Aeronautica Militare</title>
+  <style>
+@import url("/modules/system/system.base.css?oubejp");
+</style>
+<style media="screen">
+@import url("/sites/all/modules/contrib/views_slideshow/views_slideshow.css?oubejp");
+</style>
+<style>
+@import url("/sites/all/modules/contrib/simplenews/simplenews.css?oubejp");
+@import url("/sites/all/modules/contrib/date/date_api/date.css?oubejp");
+@import url("/modules/field/theme/field.css?oubejp");
+@import url("/sites/all/modules/custom/html_widget/css/html_widget.css?oubejp");
+@import url("/sites/all/modules/custom/mygallery/unitegallery-master/source/unitegallery/css/unite-gallery.css?oubejp");
+@import url("/sites/all/modules/custom/mygallery/unitegallery-master/source/unitegallery/themes/default/ug-theme-default.css?oubejp");
+@import url("/sites/all/modules/contrib/extlink/extlink.css?oubejp");
+@import url("/sites/all/modules/contrib/views/css/views.css?oubejp");
+@import url("/sites/all/modules/custom/cookiecuttr/cookiecuttr.css?oubejp");
+@import url("/sites/all/modules/contrib/ckeditor/css/ckeditor.css?oubejp");
+</style>
+<style>
+@import url("/sites/all/modules/contrib/colorbox/styles/default/colorbox_style.css?oubejp");
+@import url("/sites/all/modules/contrib/ctools/css/ctools.css?oubejp");
+@import url("/sites/all/modules/contrib/views_slideshow/contrib/views_slideshow_cycle/views_slideshow_cycle.css?oubejp");
+</style>
+<style>
+@import url("/sites/all/themes/meteoam/css/bootstrap.min.css?oubejp");
+@import url("/sites/all/themes/meteoam/css/style.css?oubejp");
+</style>
+  <!-- HTML5 element support for IE6-8 -->
+  <!--[if lt IE 9]>
+    <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+  <![endif]-->
+  <script src="//code.jquery.com/jquery-1.10.2.min.js"></script>
+<script>window.jQuery || document.write("<script src='/sites/all/modules/contrib/jquery_update/replace/jquery/1.10/jquery.min.js'>\x3C/script>")</script>
+<script src="/misc/jquery.once.js?v=1.2"></script>
+<script src="/misc/drupal.js?oubejp"></script>
+<script src="/sites/all/modules/contrib/views_slideshow/js/views_slideshow.js?v=1.0"></script>
+<script src="/sites/all/modules/contrib/jquery_update/replace/ui/external/jquery.cookie.js?v=67fb34f6a866c40d0570"></script>
+<script src="/sites/all/modules/custom/html_widget/js/html_widget.js?oubejp"></script>
+<script src="/sites/all/modules/custom/tempo_in_atto/highcharts/js/highcharts.js?oubejp"></script>
+<script src="/sites/all/modules/custom/tempo_in_atto/highcharts/js/graph.js?oubejp"></script>
+<script src="/sites/all/modules/contrib/extlink/extlink.js?oubejp"></script>
+<script src="/sites/default/files/languages/it_j6lB92Dy3xMi1BGMg3eyriSXvdXYuf5CS_Cu3zqLqBI.js?oubejp"></script>
+<script src="/sites/all/libraries/colorbox/jquery.colorbox-min.js?oubejp"></script>
+<script src="/sites/all/modules/contrib/colorbox/js/colorbox.js?oubejp"></script>
+<script src="/sites/all/modules/contrib/colorbox/styles/default/colorbox_style.js?oubejp"></script>
+<script src="/misc/autocomplete.js?v=7.54"></script>
+<script src="/sites/all/libraries/jquery.cycle/jquery.cycle.all.js?oubejp"></script>
+<script src="/sites/all/modules/contrib/views_slideshow/contrib/views_slideshow_cycle/js/views_slideshow_cycle.js?oubejp"></script>
+<script src="/sites/all/modules/contrib/google_analytics/googleanalytics.js?oubejp"></script>
+<script>(function(i,s,o,g,r,a,m){i["GoogleAnalyticsObject"]=r;i[r]=i[r]||function(){(i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)})(window,document,"script","//www.google-analytics.com/analytics.js","ga");ga("create", "UA-18344142-4", {"cookieDomain":".meteoam.it"});ga("set", "anonymizeIp", true);ga("send", "pageview");</script>
+<script src="/sites/all/modules/custom/cookiecuttr/jquery.cookiecuttr.js?oubejp"></script>
+<script src="/sites/all/themes/meteoam/js/common.functions.js?oubejp"></script>
+<script src="/sites/all/themes/meteoam/js/bootstrap.min.js?oubejp"></script>
+<script src="/sites/all/themes/bootstrap/js/misc/autocomplete.js?oubejp"></script>
+<script>jQuery.extend(Drupal.settings, {"basePath":"\/","pathPrefix":"","ajaxPageState":{"theme":"meteoam","theme_token":"7FGkbxsetnDXipe3-Bes53CVH29-uFwsgggJPVZ4LKc","js":{"sites\/all\/themes\/bootstrap\/js\/bootstrap.js":1,"0":1,"\/\/code.jquery.com\/jquery-1.10.2.min.js":1,"1":1,"misc\/jquery.once.js":1,"misc\/drupal.js":1,"sites\/all\/modules\/contrib\/views_slideshow\/js\/views_slideshow.js":1,"sites\/all\/modules\/contrib\/jquery_update\/replace\/ui\/external\/jquery.cookie.js":1,"sites\/all\/modules\/custom\/html_widget\/js\/html_widget.js":1,"sites\/all\/modules\/custom\/tempo_in_atto\/highcharts\/js\/highcharts.js":1,"sites\/all\/modules\/custom\/tempo_in_atto\/highcharts\/js\/graph.js":1,"sites\/all\/modules\/contrib\/extlink\/extlink.js":1,"public:\/\/languages\/it_j6lB92Dy3xMi1BGMg3eyriSXvdXYuf5CS_Cu3zqLqBI.js":1,"sites\/all\/libraries\/colorbox\/jquery.colorbox-min.js":1,"sites\/all\/modules\/contrib\/colorbox\/js\/colorbox.js":1,"sites\/all\/modules\/contrib\/colorbox\/styles\/default\/colorbox_style.js":1,"misc\/autocomplete.js":1,"sites\/all\/libraries\/jquery.cycle\/jquery.cycle.all.js":1,"sites\/all\/modules\/contrib\/views_slideshow\/contrib\/views_slideshow_cycle\/js\/views_slideshow_cycle.js":1,"sites\/all\/modules\/contrib\/google_analytics\/googleanalytics.js":1,"2":1,"sites\/all\/modules\/custom\/cookiecuttr\/jquery.cookiecuttr.js":1,"sites\/all\/themes\/meteoam\/js\/common.functions.js":1,"sites\/all\/themes\/meteoam\/js\/bootstrap.min.js":1,"sites\/all\/themes\/bootstrap\/js\/misc\/autocomplete.js":1},"css":{"modules\/system\/system.base.css":1,"sites\/all\/modules\/contrib\/views_slideshow\/views_slideshow.css":1,"sites\/all\/modules\/contrib\/simplenews\/simplenews.css":1,"sites\/all\/modules\/contrib\/date\/date_api\/date.css":1,"modules\/field\/theme\/field.css":1,"sites\/all\/modules\/custom\/html_widget\/css\/html_widget.css":1,"sites\/all\/modules\/custom\/mygallery\/unitegallery-master\/source\/unitegallery\/css\/unite-gallery.css":1,"sites\/all\/modules\/custom\/mygallery\/unitegallery-master\/source\/unitegallery\/themes\/default\/ug-theme-default.css":1,"sites\/all\/modules\/contrib\/extlink\/extlink.css":1,"sites\/all\/modules\/contrib\/views\/css\/views.css":1,"sites\/all\/modules\/custom\/cookiecuttr\/cookiecuttr.css":1,"sites\/all\/modules\/contrib\/ckeditor\/css\/ckeditor.css":1,"sites\/all\/modules\/contrib\/colorbox\/styles\/default\/colorbox_style.css":1,"sites\/all\/modules\/contrib\/ctools\/css\/ctools.css":1,"sites\/all\/modules\/contrib\/views_slideshow\/contrib\/views_slideshow_cycle\/views_slideshow_cycle.css":1,"sites\/all\/themes\/meteoam\/css\/bootstrap.min.css":1,"sites\/all\/themes\/meteoam\/css\/style.css":1}},"colorbox":{"transition":"elastic","speed":"350","opacity":"0.85","slideshow":true,"slideshowAuto":false,"slideshowSpeed":"2500","slideshowStart":"start slideshow","slideshowStop":"stop slideshow","current":"{current} of {total}","previous":"\u00ab Prev","next":"Next \u00bb","close":"Close","overlayClose":true,"maxWidth":"90%","maxHeight":"90%","initialWidth":"300","initialHeight":"250","fixed":true,"scrolling":true,"mobiledetect":true,"mobiledevicewidth":"480px"},"urlIsAjaxTrusted":{"\/metar":true},"viewsSlideshow":{"am_news_last-block":{"methods":{"goToSlide":["viewsSlideshowPager","viewsSlideshowSlideCounter","viewsSlideshowCycle"],"nextSlide":["viewsSlideshowPager","viewsSlideshowSlideCounter","viewsSlideshowCycle"],"pause":["viewsSlideshowControls","viewsSlideshowCycle"],"play":["viewsSlideshowControls","viewsSlideshowCycle"],"previousSlide":["viewsSlideshowPager","viewsSlideshowSlideCounter","viewsSlideshowCycle"],"transitionBegin":["viewsSlideshowPager","viewsSlideshowSlideCounter"],"transitionEnd":[]},"paused":0}},"viewsSlideshowCycle":{"#views_slideshow_cycle_main_am_news_last-block":{"num_divs":5,"id_prefix":"#views_slideshow_cycle_main_","div_prefix":"#views_slideshow_cycle_div_","vss_id":"am_news_last-block","effect":"fade","transition_advanced":0,"timeout":5000,"speed":700,"delay":0,"sync":1,"random":0,"pause":1,"pause_on_click":0,"action_advanced":0,"start_paused":0,"remember_slide":0,"remember_slide_days":1,"pause_in_middle":0,"pause_when_hidden":0,"pause_when_hidden_type":"full","amount_allowed_visible":"","nowrap":0,"fixed_height":1,"items_per_slide":1,"wait_for_image_load":1,"wait_for_image_load_timeout":3000,"cleartype":0,"cleartypenobg":0,"advanced_options":"{}"}},"extlink":{"extTarget":"_blank","extClass":"ext","extLabel":"(link is external)","extImgClass":0,"extSubdomains":0,"extExclude":"(.*\\.meteoam\\.it)|(10\\.17\\.44.*)|(10\\.24\\.38.*)|(80\\.17\\.44\\.2.*)|(.*meteoam\\.aeronautica\\.difesa.\\it)","extInclude":"clima\\.meteoam\\.it.|wwis\\.meteoam\\.it.|www\\.meteoam\\.it\\\/Storage\\\/Cicloni.","extCssExclude":"","extCssExplicit":"","extAlert":0,"extAlertText":"This link will take you to an external web site. We are not responsible for their content.","mailtoClass":0,"mailtoLabel":"(link sends e-mail)"},"googleanalytics":{"trackOutbound":1,"trackMailto":1,"trackDownload":1,"trackDownloadExtensions":"7z|aac|avi|csv|doc|exe|flv|gif|gz|jpe?g|js|mp(3|4|e?g)|mov|pdf|phps|png|ppt|rar|sit|tar|torrent|txt|wma|wmv|xls|xml|zip","trackDomainMode":"1"},"bootstrap":{"anchorsFix":1,"anchorsSmoothScrolling":1,"popoverEnabled":1,"popoverOptions":{"animation":1,"html":0,"placement":"right","selector":"","trigger":"click","title":"","content":"","delay":0,"container":"body"},"tooltipEnabled":1,"tooltipOptions":{"animation":1,"html":0,"placement":"auto left","selector":"","trigger":"hover focus","delay":0,"container":"body"}}});</script>
+    
+    <script type='text/javascript'>
+	(function() {
+	var useSSL = 'https:' == document.location.protocol;
+	var src = (useSSL ? 'https:' : 'http:') +
+	'//www.googletagservices.com/tag/js/gpt.js';
+	//document.write('<scr' + 'ipt src="' + src + '"></scr' + 'ipt>');
+	})();
+	</script>
+    
+    <script type='text/javascript'>
+	//googletag.defineSlot('/1010125/MeteoAM/Home/990x60-MeteoAM-Home', [990, 60], 'div-gpt-ad-1374595575059-0').addService(googletag.pubads());
+	//googletag.defineSlot('/1010125/MeteoAM/Home/300x250-MeteoAM-Home', [300, 250], 'div-gpt-ad-1374595585628-0').addService(googletag.pubads());
+	//googletag.pubads().enableSyncRendering();
+	//googletag.pubads().enableSingleRequest();
+	//googletag.enableServices();
+	</script>
+	
+</head>
+<body class="html not-front not-logged-in one-sidebar sidebar-second page-metar" >
+  <div id="skip-link">
+    <a href="#main-content" class="element-invisible element-focusable">Salta al contenuto principale</a>
+  </div>
+    <div class="region region-page-top">
+    <script type="text/javascript" src="/sites/all/libraries/wz_tooltip/wz_tooltip.js"></script>  </div>
+  <div id="logo" class="container-fluid">
+	<div class="container">
+		<div class="row">
+	  <div class="col-xs-3 col-md-3 col-lg-3">
+		<a href="http://www.difesa.it/"><img class="img-responsive logo-mindifesa" style="margin-top:20px" typeof="foaf:Image" src="/sites/all/themes/meteoam/css/img-stile/logo-difesa.jpg" alt="Ministero della Difesa" title="Ministero della Difesa" /></a>	  	
+	  	</div>
+	  <div class="col-xs-6 col-md-6 col-lg-6">
+			<a href="/"><img class="img-responsive logo-meteoam" typeof="foaf:Image" src="/sites/all/themes/meteoam/logo.png" alt="MeteoAM.it - Servizio Meteorologico Aeronautica Militare" title="MeteoAM.it - Servizio Meteorologico Aeronautica Militare" /></a>	  	
+	  	</div>
+	  <div class="col-xs-3 col-md-3 col-lg-3">
+		<a href="http://www.aeronautica.difesa.it/"><img class="img-responsive logo-aeronautica" style="margin-top:20px" typeof="foaf:Image" src="/sites/all/themes/meteoam/css/img-stile/logo_am.jpg" alt="Aeronautica Militare" title="Aeronautica Militare" /></a>	  	
+	  	</div>
+	  </div>
+	  
+	</div>
+</div>
+
+<header id="navbar" role="banner" class="navbar container-fluid navbar-default">
+  <div class="container-fluid">
+    <div class="navbar-header">
+      <!-- .btn-navbar is used as the toggle for collapsed navbar content -->
+      <button type="button" class="navbar-toggle" data-toggle="collapse" data-target=".navbar-collapse">
+        <span class="sr-only">Toggle navigation</span>
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+      </button>
+    </div>
+
+          <div class="navbar-collapse collapse">
+        <nav role="navigation" class="container">
+                      <ul class="menu nav navbar-nav"><li class="first leaf menu-133 menu-home"><a href="/" title="">Home</a></li>
+<li class="expanded menu-4742 menu-previsioni dropdown"><a href="/previsioni/italia" title="" data-target="#" class="dropdown-toggle" data-toggle="dropdown">Previsioni <span class="caret"></span></a><ul class="dropdown-menu"><li class="first leaf menu-4743 menu-italia"><a href="/previsioni/italia" title="">Italia</a></li>
+<li class="leaf menu-4744 menu-nord"><a href="/previsioni/nord" title="">Nord</a></li>
+<li class="leaf menu-4745 menu-centro"><a href="/previsioni/centro" title="">Centro</a></li>
+<li class="leaf menu-4953 menu-sardegna"><a href="/previsioni/sardegna" title="">Sardegna</a></li>
+<li class="last leaf menu-5107 menu-sudesicilia"><a href="/previsioni/sud" title="">Sud e Sicilia</a></li>
+</ul></li>
+<li class="expanded menu-4738 menu-tempoinatto dropdown"><a href="/tempo_in_atto/italia" title="" data-target="#" class="dropdown-toggle" data-toggle="dropdown">Tempo In Atto <span class="caret"></span></a><ul class="dropdown-menu"><li class="first leaf menu-4739 menu-italia"><a href="/tempo_in_atto/italia">Italia</a></li>
+<li class="leaf menu-4767 menu-europa"><a href="/tempo_in_atto/europa">Europa</a></li>
+<li class="leaf menu-5771 menu-africa"><a href="/tempo_in_atto/africa">Africa</a></li>
+<li class="leaf menu-5777 menu-asia"><a href="/tempo_in_atto/asia">Asia</a></li>
+<li class="leaf menu-5773 menu-nordecentroamerica"><a href="/tempo_in_atto/america-del-nord">Nord e Centro America</a></li>
+<li class="leaf menu-5775 menu-sudamerica"><a href="/tempo_in_atto/america-del-sud">Sud America</a></li>
+<li class="leaf menu-5779 menu-pacificosudovest"><a href="/tempo_in_atto/australia">Pacifico Sud Ovest</a></li>
+<li class="last leaf menu-4740 menu-mondo"><a href="/tempo_in_atto/mondo">Mondo</a></li>
+</ul></li>
+<li class="expanded active-trail menu-1426 menu-aeronautica dropdown"><a href="/metar/grafica" class="active-trail dropdown-toggle" data-target="#" data-toggle="dropdown">Aeronautica <span class="caret"></span></a><ul class="dropdown-menu"><li class="first leaf menu-3346 menu-metaretafitalia"><a href="/metar/grafica" title="Informazioni su Metar e Taf stazioni Italiane">Metar e Taf Italia</a></li>
+<li class="leaf menu-3089 menu-swll"><a href="/prodotti_grafici/bassiStrati">SWLL</a></li>
+<li class="leaf menu-3368 menu-sigmet"><a href="/sigmet" title="Sigmet italiani">Sigmet</a></li>
+<li class="leaf menu-3367 menu-airmet"><a href="/airmet" title="Visualizzazione degli Airmet Italiani">Airmet</a></li>
+<li class="leaf active-trail menu-3334 menu-metaretafmondo active"><a href="/metar" title="Metar e Taf delle Stazioni" class="active-trail active">Metar e Taf Mondo</a></li>
+<li class="leaf menu-9311 menu-gafor"><a href="/gafor" title="Gafor">Gafor</a></li>
+<li class="last leaf menu-9635 menu-prereg"><a href="/prereg" title="Prereg">Prereg</a></li>
+</ul></li>
+<li class="expanded menu-1425 menu-mare dropdown"><a href="/meteomar/view" title="" data-target="#" class="dropdown-toggle" data-toggle="dropdown">Mare <span class="caret"></span></a><ul class="dropdown-menu"><li class="first leaf menu-2778 menu-avvisodiburrasca"><a href="/meteomar/burrasca">Avviso di burrasca</a></li>
+<li class="leaf menu-2777 menu-meteomar"><a href="/meteomar/view">Meteomar</a></li>
+<li class="leaf menu-1515 menu-sistemanettuno"><a href="/nettuno" title="">Sistema Nettuno</a></li>
+<li class="leaf menu-4827 menu-temperaturamare"><a href="/prodotti_grafici/temperaturaMare">Temperatura Mare</a></li>
+<li class="last leaf menu-15565 menu-previsionididettaglio"><a href="/nettuno/areedettagliate" title="">Previsioni di dettaglio</a></li>
+</ul></li>
+<li class="expanded menu-1427 menu-montagna dropdown"><a href="/bollettini/meteomont" title="" data-target="#" class="dropdown-toggle" data-toggle="dropdown">Montagna <span class="caret"></span></a><ul class="dropdown-menu"><li class="first leaf menu-2915 menu-bollettinometeomont"><a href="/bollettini/meteomont">Bollettino METEOMONT</a></li>
+<li class="leaf menu-5035 menu-serviziometeomont"><a href="http://www.meteoam.it/page/servizio-meteomont" title="Servizio Nazionale di Previsione Neve e Valanghe">Servizio METEOMONT</a></li>
+<li class="leaf menu-4714 menu-zerotermico"><a href="/prodotti_grafici/zeroTermico">Zero Termico</a></li>
+<li class="last leaf menu-4813 menu-pericolovalanghe"><a href="/bollettini/pericoloValanghe" title="">Pericolo Valanghe</a></li>
+</ul></li>
+<li class="expanded menu-8207 menu-satellite dropdown"><a href="/prodotti_grafici/nefoSfloc" title="" data-target="#" class="dropdown-toggle" data-toggle="dropdown">Satellite <span class="caret"></span></a><ul class="dropdown-menu"><li class="first leaf menu-8211 menu-analisidasatellite"><a href="/prodotti_grafici/nefoSfloc">Analisi da satellite</a></li>
+<li class="leaf menu-8209 menu-meteosat"><a href="/meteosat">Meteosat</a></li>
+<li class="leaf menu-8213 menu-polare"><a href="/prodotti_grafici/tiros">Polare</a></li>
+<li class="leaf menu-14235 menu-moviolanefodina"><a href="http://www.meteoam.it/nefodina/it" title="">Moviola Nefodina</a></li>
+<li class="last leaf menu-14237 menu-licenzeeumetsat"><a href="http://www.meteoam.it/licenze-uso-eumetsat" title="">Licenze Eumetsat</a></li>
+</ul></li>
+<li class="last expanded menu-4747 menu-archivio dropdown"><a href="http://clima.meteoam.it" title="" data-target="#" class="dropdown-toggle" data-toggle="dropdown">Archivio <span class="caret"></span></a><ul class="dropdown-menu"><li class="first leaf menu-15465 menu-datimeteo"><a href="//clima.meteoam.it/RicercaDati.php" title="">Dati Meteo</a></li>
+<li class="last leaf menu-15467 menu-climatologia"><a href="http://clima.meteoam.it/" title="">Climatologia</a></li>
+</ul></li>
+</ul>                                      </nav>
+      </div>
+      </div>
+</header>
+
+<div class="main-container container">
+
+  <header role="banner" id="page-header">
+    
+      </header> <!-- /#page-header -->
+
+  <div class="row">
+
+    
+    <section class="col-sm-9">
+              <div class="highlighted jumbotron">  <div class="region region-highlighted">
+    <div class="no-gutter col-xs-12 col-sm-12">
+	<section id="block-meteoalarm-meteoalarm" class="block block-meteoalarm col-md-5 clearfix">
+	
+	  	  	  	
+	  <a href="/meteoalarm"><img class="media-object" alt="" src="/Storage/Meteoalarm/italia_11.gif?35184899" typeof="foaf:Image" width="86"></a>
+
+<div class="panel panel-default">
+    <div class="panel-heading intensita-green">
+        <h3 class="panel-title"><a href="/meteoalarm">Fenomeni Intensi</a></h3>
+        <p>Nessun Fenomeno Intenso</p>       <div class="panel-body"><a href="/meteoalarm">Consulta la <strong>mappa</strong> <span class="glyphicon glyphicon glyphicon-chevron-right" aria-hidden="true"></span></a></div>
+    </div>
+   <!-- <div class="panel-body">
+        <a href="/meteoalarm">Consulta la <strong>mappa</strong> <span class="glyphicon glyphicon glyphicon-chevron-right" aria-hidden="true"></span></a>
+    </div>!-->
+</div>
+	
+	</section> <!-- /.block -->	<section id="block-ricerca-localita-ricerca-previsioni-localita-hp" class="block block-ricerca-localita col-md-7 clearfix">
+	
+	  	  	  	
+	  <form class="form-inline" action="/metar" method="post" id="ricerca-localita-form" accept-charset="UTF-8"><div><div class="form-type-textfield form-item-ricerca-localita form-autocomplete form-item form-group">
+  <label class="element-invisible" for="edit-ricerca-localita">Previsioni per località </label>
+ <div class="input-group"><input placeholder="Cerca PREVISIONE per località" class="form-control form-text" type="text" id="edit-ricerca-localita" name="ricerca_localita" value="" size="60" maxlength="128" /><span class="input-group-addon"><i class="icon glyphicon glyphicon-refresh" aria-hidden="true"></i></span></div><input type="hidden" id="edit-ricerca-localita-autocomplete" value="http://www.meteoam.it/ricerca_localita/autocomplete" disabled="disabled" class="autocomplete" />
+</div>
+<button class="btn btn-default form-submit" id="edit-ricerca-localita-submit" name="op" value="&lt;span class=&quot;glyphicon glyphicon-search&quot; aria-hidden=&quot;true&quot;&gt;&lt;/span&gt;" type="submit"><span class="glyphicon glyphicon-search" aria-hidden="true"></span></button>
+<input type="hidden" name="form_build_id" value="form-qQR1_W-BphxTsaLBcFDpxp28-RolNZmEpUN4VrD5uwM" />
+<input type="hidden" name="form_id" value="ricerca_localita_form" />
+</div></form><div id="ricerca-localita-placeholder"></div>
+	
+	</section> <!-- /.block -->
+</div>
+  </div>
+</div>
+            <ol class="breadcrumb"><li class="first"><a href="/metar/grafica">Aeronautica</a></li>
+<li class="active last">Metar e Taf Mondo</li>
+</ol>      <a id="main-content"></a>
+                    <h1 class="page-header">Metar e Taf Mondo</h1>
+                  <div class="alert alert-block alert-success">
+  <a class="close" data-dismiss="alert" href="#">&times;</a>
+<h4 class="element-invisible">Messaggio di stato</h4>
+<p><b>UTAA - Ashgabat</b><br /><p><b>TAF</b>: <br />TAF UTAA 091100Z NIL= <br /></p><p><b>METAR</b>: <br />METAR UTAA 091200Z NIL=<br /></p></div>
+                                        <div class="region region-content">
+    <section id="block-sharethis-sharethis-block" class="block block-sharethis clearfix">
+
+      
+  <div class="sharethis-wrapper"><span st_url="http://www.meteoam.it/metar" st_title="Metar e Taf Mondo" class="st_facebook"></span>
+<span st_url="http://www.meteoam.it/metar" st_title="Metar e Taf Mondo via @ItalianAirForce" class="st_twitter"></span>
+<span st_url="http://www.meteoam.it/metar" st_title="Metar e Taf Mondo" class="st_whatsapp"></span>
+<span st_url="http://www.meteoam.it/metar" st_title="Metar e Taf Mondo" class="st_googleplus"></span>
+<span st_url="http://www.meteoam.it/metar" st_title="Metar e Taf Mondo" class="st_tumblr"></span>
+<span st_url="http://www.meteoam.it/metar" st_title="Metar e Taf Mondo" class="st_evernote"></span>
+<span st_url="http://www.meteoam.it/metar" st_title="Metar e Taf Mondo" class="st_plusone"></span>
+<span st_url="http://www.meteoam.it/metar" st_title="Metar e Taf Mondo" class="st_fblike"></span>
+</div>
+</section> <!-- /.block -->
+<section id="block-system-main" class="block block-system clearfix">
+
+      
+  <script type="text/javascript">
+function searchIcao(icao) {
+	document.getElementById('edit-icao').value = icao;
+	document.getElementById('edit-submit').click();
+}
+</script>Questa funzione permette di cercare bollettini Metar e Taf in base al nominativo ICAO.<form action="/metar" method="post" id="metar-searchform" accept-charset="UTF-8"><div><div class="form-type-textfield form-item-icao form-item form-group" data-toggle="tooltip" title="Prego inserire nominativo ICAO da ricercare">
+  <label for="edit-icao">Icao </label>
+ <input class="form-control form-text" type="text" id="edit-icao" name="icao" value="" size="10" maxlength="128" />
+</div>
+<button class="btn btn-primary form-submit" id="edit-submit" name="op" value="Inoltra" type="submit">Inoltra</button>
+<p></p><div id="target"></div><input type="hidden" name="form_build_id" value="form-YWBIioYiXepf6eFrMpZ7gLmIXT5JaAqhyjU4VXXNugE" />
+<input type="hidden" name="form_id" value="metar_searchform" />
+</div></form>
+<p></p><p></p><p></p>
+<table><tr>
+<td style="background: rgb(204, 204, 255) none repeat scroll 0% 0%; -moz-background-clip: border; -moz-background-origin: padding; -moz-background-inline-policy: continuous;" width="100%" align="center"><strong>Codici aeroportuali ICAO</strong></td>
+</tr>
+<tr>
+<td align="center">
+<a href="/metar?letter=A">&nbsp;A&nbsp;</a><a href="/metar?letter=B">&nbsp;B&nbsp;</a><a href="/metar?letter=C">&nbsp;C&nbsp;</a><a href="/metar?letter=D">&nbsp;D&nbsp;</a><a href="/metar?letter=E">&nbsp;E&nbsp;</a><a href="/metar?letter=F">&nbsp;F&nbsp;</a><a href="/metar?letter=G">&nbsp;G&nbsp;</a><a href="/metar?letter=H">&nbsp;H&nbsp;</a><a href="/metar?letter=I">&nbsp;I&nbsp;</a><a href="/metar?letter=J">&nbsp;J&nbsp;</a><a href="/metar?letter=K">&nbsp;K&nbsp;</a><a href="/metar?letter=L">&nbsp;L&nbsp;</a><a href="/metar?letter=M">&nbsp;M&nbsp;</a><a href="/metar?letter=N">&nbsp;N&nbsp;</a><a href="/metar?letter=O">&nbsp;O&nbsp;</a><a href="/metar?letter=P">&nbsp;P&nbsp;</a><a href="/metar?letter=Q">&nbsp;Q&nbsp;</a><a href="/metar?letter=R">&nbsp;R&nbsp;</a><a href="/metar?letter=S">&nbsp;S&nbsp;</a><a href="/metar?letter=T">&nbsp;T&nbsp;</a><a href="/metar?letter=U">&nbsp;U&nbsp;</a><a href="/metar?letter=V">&nbsp;V&nbsp;</a><a href="/metar?letter=W">&nbsp;W&nbsp;</a><a href="/metar?letter=X">&nbsp;X&nbsp;</a><a href="/metar?letter=Y">&nbsp;Y&nbsp;</a><a href="/metar?letter=Z">&nbsp;Z&nbsp;</a></tr></table>
+</section> <!-- /.block -->
+  </div>
+    </section>
+
+          <aside class="col-sm-3" role="complementary">
+          <div class="region region-sidebar-second">
+    <section id="block-search-form" class="block block-search clearfix">
+
+      
+  <form class="form-search content-search" action="/metar" method="post" id="search-block-form" accept-charset="UTF-8"><div><div>
+      <h2 class="element-invisible">Maschera di ricerca</h2>
+    <div class="input-group"><input title="Inserire i termini da cercare." placeholder="Cerca nel sito" class="form-control form-text" type="text" id="edit-search-block-form--2" name="search_block_form" value="" size="15" maxlength="128" /><span class="input-group-btn"><button type="submit" class="btn btn-default">Ricerca</button></span></div><button class="element-invisible btn btn-primary form-submit" id="edit-submit--2" name="op" value="Ricerca" type="submit">Ricerca</button>
+<input type="hidden" name="form_build_id" value="form-MoqVdPTxEcKOlhx9hvOhKGiIxQpg1uE0YgDzQUAn7pE" />
+<input type="hidden" name="form_id" value="search_block_form" />
+</div>
+</div></form>
+</section> <!-- /.block -->
+<section id="block-block-3" class="block block-block hidden-xs hidden-sm clearfix">
+
+      
+    
+    <!-- MeteoAM/Home/300x250-MeteoAM-Home -->
+    <div id='div-gpt-ad-1374595585628-0'>
+	    <script type='text/javascript'>
+	    //googletag.display('div-gpt-ad-1374595585628-0');
+	    </script>
+    </div>
+
+</section> <!-- /.block -->
+<section id="block-views-am-news-last-block" class="block block-views hidden-xs hidden-sm clearfix">
+
+        <h2 class="block-title">News A.M.</h2>
+    
+  <div class="view view-am-news-last view-id-am_news_last view-display-id-block view-dom-id-81fd1ac81dd37190a6b10aba40733e7f">
+        
+  
+  
+      <div class="view-content">
+      
+  <div class="skin-default">
+    
+    <div id="views_slideshow_cycle_main_am_news_last-block" class="views_slideshow_cycle_main views_slideshow_main"><div id="views_slideshow_cycle_teaser_section_am_news_last-block" class="views-slideshow-cycle-main-frame views_slideshow_cycle_teaser_section">
+  <div id="views_slideshow_cycle_div_am_news_last-block_0" class="views-slideshow-cycle-main-frame-row views_slideshow_cycle_slide views_slideshow_slide views-row-1 views-row-odd">
+  <div class="views-slideshow-cycle-main-frame-row-item views-row views-row-0 views-row-odd views-row-first">
+    
+  <div class="views-field views-field-title">        <span class="field-content"><a href="http://www.aeronautica.difesa.it/comunicazione/notizie/Pagine/CAMBIODICOMANDOALLACCADEMIAAERONAUTICA.aspx" target="_blank">Cambio di comando all’Accademia Aeronautica</a></span>  </div></div>
+</div>
+<div id="views_slideshow_cycle_div_am_news_last-block_1" class="views-slideshow-cycle-main-frame-row views_slideshow_cycle_slide views_slideshow_slide views-row-2 views_slideshow_cycle_hidden views-row-even">
+  <div class="views-slideshow-cycle-main-frame-row-item views-row views-row-1 views-row-even">
+    
+  <div class="views-field views-field-title">        <span class="field-content"><a href="http://www.aeronautica.difesa.it/comunicazione/notizie/Pagine/ConclusalEsercitazioneGrifone2017.aspx" target="_blank">Conclusa l’Esercitazione “Grifone 2017”</a></span>  </div></div>
+</div>
+<div id="views_slideshow_cycle_div_am_news_last-block_2" class="views-slideshow-cycle-main-frame-row views_slideshow_cycle_slide views_slideshow_slide views-row-3 views_slideshow_cycle_hidden views-row-odd">
+  <div class="views-slideshow-cycle-main-frame-row-item views-row views-row-2 views-row-odd">
+    
+  <div class="views-field views-field-title">        <span class="field-content"><a href="http://www.aeronautica.difesa.it/comunicazione/notizie/Pagine/CorsoLIFT.aspx" target="_blank">Il 61° Stormo addestra istruttori di volo internazionali</a></span>  </div></div>
+</div>
+<div id="views_slideshow_cycle_div_am_news_last-block_3" class="views-slideshow-cycle-main-frame-row views_slideshow_cycle_slide views_slideshow_slide views-row-4 views_slideshow_cycle_hidden views-row-even">
+  <div class="views-slideshow-cycle-main-frame-row-item views-row views-row-3 views-row-even">
+    
+  <div class="views-field views-field-title">        <span class="field-content"><a href="http://www.aeronautica.difesa.it/comunicazione/notizie/Pagine/grifone.aspx" target="_blank">Entrano nel vivo le attività della Grifone 2017</a></span>  </div></div>
+</div>
+<div id="views_slideshow_cycle_div_am_news_last-block_4" class="views-slideshow-cycle-main-frame-row views_slideshow_cycle_slide views_slideshow_slide views-row-5 views_slideshow_cycle_hidden views-row-odd">
+  <div class="views-slideshow-cycle-main-frame-row-item views-row views-row-4 views-row-odd views-row-last">
+    
+  <div class="views-field views-field-title">        <span class="field-content"><a href="http://www.aeronautica.difesa.it/comunicazione/notizie/Pagine/lyra.aspx" target="_blank">Commemorati i caduti del “LYRA 34”</a></span>  </div></div>
+</div>
+</div>
+</div>
+      </div>
+    </div>
+  
+  
+  
+  
+  
+  
+</div>
+</section> <!-- /.block -->
+<section id="block-block-11" class="block block-block hidden-xs hidden-sm clearfix">
+
+        <h2 class="block-title">RIVISTA DI METEOROLOGIA AERONAUTICA</h2>
+    
+  <a href='http://www.aeronautica.difesa.it/comunicazione/editoria/rivmeteorologia/orainedicola/Pagine/default.aspx' target='_blank'><img class='img-responsive' src='/sites/all/files/images/copertina3.jpg'/></a><p>&nbsp;</p>
+
+</section> <!-- /.block -->
+<section id="block-block-6" class="block block-block hidden-xs clearfix">
+
+        <h2 class="block-title">FOTO <strong>GALLERY</strong></h2>
+    
+  <p><a href="/mygallery?index=12"><img alt="" id="banner-temp2" src="/sites/all/modules/custom/mygallery/images/img_201702030956_first.jpg" style="float:left; height:192px; width:235px" /></a></p>
+
+</section> <!-- /.block -->
+<section id="block-views-news-last-block-1" class="block block-views hidden-xs hidden-sm clearfix">
+
+      
+  <div class="view view-news-last view-id-news_last view-display-id-block_1 view-dom-id-0c9702f114b1b3c50d29095602964c76">
+        
+  
+  
+      <div class="view-content">
+        <div class="views-row views-row-1 views-row-odd views-row-first">
+      
+  <div class="views-field views-field-name">        <span class="field-content"><h2 class="block-title"><strong>Cultura e informazione</strong></h2><br/></span>  </div>  
+  <div class="views-field views-field-field-image">        <div class="field-content"><a href="/news/line-la-nuova-pagina-con-le-previsioni-di-dettaglio-sul-mare"><img class="img-responsive" typeof="foaf:Image" src="/sites/default/files/styles/sidebar_news/public/capri01.jpg?itok=Fxn2ZUHc" width="235" height="156" alt="" /></a></div>  </div>  
+  <div class="views-field views-field-title">        <span class="field-content"><a href="/news/line-la-nuova-pagina-con-le-previsioni-di-dettaglio-sul-mare">On line la nuova pagina con le previsioni di dettaglio sul mare</a></span>  </div>  
+  <div class="views-field views-field-body">        <div class="field-content">      
+</div>  </div>  </div>
+  <div class="views-row views-row-2 views-row-even views-row-last">
+      
+  <div class="views-field views-field-name">        <span class="field-content"><h2 class="block-title"><strong>Stagione in corso</strong></h2><br/></span>  </div>  
+  <div class="views-field views-field-field-image">        <div class="field-content"><a href="/news/il-cnmca-supporto-della-traversata-atlantica-del-catamarano-lo-spirito-di-stella"><img class="img-responsive" typeof="foaf:Image" src="/sites/default/files/styles/sidebar_news/public/wow.png?itok=BG3untpT" width="235" height="156" alt="" /></a></div>  </div>  
+  <div class="views-field views-field-title">        <span class="field-content"><a href="/news/il-cnmca-supporto-della-traversata-atlantica-del-catamarano-lo-spirito-di-stella">Il CNMCA a supporto della traversata atlantica del catamarano “Lo spirito di Stella”</a></span>  </div>  
+  <div class="views-field views-field-body">        <div class="field-content">      
+</div>  </div>  </div>
+    </div>
+  
+  
+  
+  
+  
+  
+</div>
+</section> <!-- /.block -->
+  </div>
+      </aside>  <!-- /#sidebar-second -->
+    
+  </div>
+</div>
+<footer class="footer container">
+    <div class="region region-footer row">
+    <section id="block-menu-menu-navigazione-aree" class="block block-menu col-md-3 clearfix">
+
+        <h2 class="block-title">Servizio Meteorologico</h2>
+    
+  <ul class="menu nav"><li class="first leaf menu-3306 menu-home"><a href="/" title="Collegamento all&#039;home page">Home</a></li>
+<li class="leaf menu-12370 menu-cennistorici"><a href="/cenni-storici" title="">Cenni storici</a></li>
+<li class="expanded menu-1475 menu-serviziperlacomunit dropdown"><a href="/contributo-difesa" title="" data-target="#" class="dropdown-toggle" data-toggle="dropdown">Servizi per la comunità <span class="caret"></span></a><ul class="dropdown-menu"><li class="first leaf menu-12364 menu-contributoalladifesa"><a href="/contributo-difesa" title="">Contributo alla difesa</a></li>
+<li class="leaf menu-12366 menu-contributoallasalvaguardiadelleviteumaneedeibeni"><a href="/contributo-salvaguardia" title="">Contributo alla salvaguardia delle vite umane e dei beni</a></li>
+<li class="last leaf menu-12368 menu-contributoalleattiviteconomicheesociali"><a href="/contributo-attivita" title="">Contributo alle attività economiche e sociali</a></li>
+</ul></li>
+<li class="expanded menu-1488 menu-fenomeniintensi dropdown"><a href="/avviso_meteorologico_nazionale" title="" data-target="#" class="dropdown-toggle" data-toggle="dropdown">Fenomeni intensi  <span class="caret"></span></a><ul class="dropdown-menu"><li class="first leaf menu-4952 menu-previsionefenomeniintensi"><a href="/meteoalarm" title="">Previsione fenomeni intensi</a></li>
+<li class="leaf menu-2975 menu-ultimiavvisiemessi"><a href="/ultimi_avvisi_emessi" accesskey="T" title="">Ultimi Avvisi Emessi</a></li>
+<li class="leaf menu-1489 menu-informazionediburrasca"><a href="/meteomar/burrasca" title="">Informazione di burrasca</a></li>
+<li class="leaf menu-6569 menu-informazionerischiovalanghe"><a href="http://www.sian.it/infoMeteo/index.do?prevValanghe=true" title="">Informazione rischio valanghe</a></li>
+<li class="last leaf menu-2916 menu-bollettinopericolovalanghe"><a href="/bollettini/rischioValanghe" title="">Bollettino Pericolo Valanghe</a></li>
+</ul></li>
+<li class="leaf menu-12272 menu-modellidiprevisione"><a href="/modelli-di-previsione-numerica" title="">Modelli di previsione</a></li>
+<li class="expanded menu-9639 menu-affidabilitprevisioni dropdown"><a href="/attendibilita_previsioni" accesskey="A" title="" data-target="#" class="dropdown-toggle" data-toggle="dropdown">Affidabilità Previsioni <span class="caret"></span></a><ul class="dropdown-menu"><li class="first leaf menu-4954 menu-generalita"><a href="/news/che-affidabilita-hanno-le-previsioni-meteorologiche" title="">Generalita</a></li>
+<li class="collapsed menu-4765 menu-verifichemodelliperlocalit"><a href="/verifiche" title="Verifiche modelli per località">Verifiche modelli per località</a></li>
+<li class="leaf menu-5028 menu-verificamodelliperarea"><a href="/page/verifiche-modelli" title="">Verifica Modelli per Area</a></li>
+<li class="last leaf menu-1481 menu-approfondimentoverificamodelli"><a href="/page/approfondimento-sulla-verifica-dei-modelli-meteorologici" title="Approfondimento sulla verifica dei modelli meteorologici">Approfondimento verifica modelli</a></li>
+</ul></li>
+<li class="leaf menu-14191 menu-previsioninelmondo"><a href="http://wwis.meteoam.it" title="">Previsioni nel Mondo</a></li>
+<li class="leaf menu-1486 menu-iscrizionenewsletter"><a href="/user" title="">Iscrizione Newsletter</a></li>
+<li class="leaf menu-14024 menu-serviziperilweb"><a href="/page/widget-html-e-script-siti-web" title="">Servizi per il Web</a></li>
+<li class="last expanded menu-1539 menu-links dropdown"><a href="/lista_siti_meteo" title="" data-target="#" class="dropdown-toggle" data-toggle="dropdown">Links <span class="caret"></span></a><ul class="dropdown-menu"><li class="first leaf menu-1540 menu-meteo"><a href="/lista_siti_meteo" title="">Meteo</a></li>
+<li class="last leaf menu-12372 menu-sitiistituzionali"><a href="/link-siti-istituzionali" title="">Siti Istituzionali</a></li>
+</ul></li>
+</ul>
+</section> <!-- /.block -->
+<section id="block-menu-menu-menu-footer-center-left" class="block block-menu col-md-3 clearfix">
+
+        <h2 class="block-title">Previsioni</h2>
+    
+  <ul class="menu nav"><li class="first leaf menu-12288 menu-analisitecnica"><a href="/bollettini/analisiTecnica" title="">Analisi tecnica</a></li>
+<li class="leaf menu-12290 menu-oggi"><a href="/bollettini/previt" title="">Oggi</a></li>
+<li class="leaf menu-12292 menu-domani"><a href="/bollettini/mediotermine/1" title="">Domani</a></li>
+<li class="leaf menu-12294 menu-finoa5giorni"><a href="/bollettini/mediotermine/5" title="">Fino a 5 giorni</a></li>
+<li class="leaf menu-12568 menu-mensile"><a href="http://www.meteoam.it/pubpage/6/20" title="">Mensile</a></li>
+<li class="leaf menu-12296 menu-roma"><a href="/ta/previsione/482/ROMA" title="">Roma</a></li>
+<li class="leaf menu-12298 menu-milano"><a href="/ta/previsione/87/MILANO" title="">Milano</a></li>
+<li class="last leaf menu-12300 menu-napoli"><a href="/ta/previsione/550/NAPOLI" title="">Napoli</a></li>
+</ul>
+</section> <!-- /.block -->
+<section id="block-menu-menu-footer-center-right" class="block block-menu col-md-3 hidden-xs hidden-sm clearfix">
+
+        <h2 class="block-title">Tempo in Atto</h2>
+    
+  <ul class="menu nav"><li class="first leaf menu-12318 menu-italia"><a href="/tempo_in_atto/italia" title="">Italia</a></li>
+<li class="leaf menu-12320 menu-europa"><a href="/tempo_in_atto/europa" title="">Europa</a></li>
+<li class="leaf menu-12322 menu-africa"><a href="/tempo_in_atto/africa" title="">Africa</a></li>
+<li class="leaf menu-12324 menu-asia"><a href="/tempo_in_atto/asia" title="">Asia</a></li>
+<li class="leaf menu-12326 menu-nordcentroamerica"><a href="/tempo_in_atto/america-del-nord" title="">Nord centro America</a></li>
+<li class="leaf menu-12328 menu-sudamerica"><a href="/tempo_in_atto/america-del-sud" title="">Sud America</a></li>
+<li class="leaf menu-12330 menu-pacificosudovest"><a href="/tempo_in_atto/australia" title="">Pacifico Sud Ovest</a></li>
+<li class="leaf menu-12332 menu-mondo"><a href="/tempo_in_atto/mondo" title="">Mondo</a></li>
+<li class="last leaf menu-12334 menu-satellite"><a href="/prodotti_grafici/nefoSfloc" title="">Satellite</a></li>
+</ul>
+</section> <!-- /.block -->
+<section id="block-menu-menu-footer-dx" class="block block-menu col-md-3 clearfix">
+
+        <h2 class="block-title">Meteorologia</h2>
+    
+  <ul class="menu nav"><li class="first leaf menu-12282 menu-news"><a href="/news" title="">News</a></li>
+<li class="leaf menu-12278 menu-aeronautica"><a href="/metar/grafica" title="">Aeronautica</a></li>
+<li class="leaf menu-7735 menu-mare"><a href="/meteomar/view" title="">Mare</a></li>
+<li class="leaf menu-7773 menu-montagna"><a href="http://www.meteomont.gov.it/infoMeteo/?q=previsioni/localita&amp;id=2" title="Servizio Nazionale di Previsione Neve e Valanghe">Montagna</a></li>
+<li class="leaf menu-12280 menu-produzionegrafica"><a href="/prodotti_grafici/catopTecnica" title="">Produzione grafica</a></li>
+<li class="expanded menu-12284 menu-approfondimenti dropdown"><a href="/page/campagna-paganoss" title="" data-target="#" class="dropdown-toggle" data-toggle="dropdown">Approfondimenti <span class="caret"></span></a><ul class="dropdown-menu"><li class="first leaf menu-14189 menu-campagnapaganoss"><a href="/page/campagna-paganoss" title="">Campagna Paganoss</a></li>
+<li class="leaf menu-12398 menu-atlanteclimatico"><a href="http://clima.meteoam.it/atlanteClimatico.php" title="">Atlante climatico</a></li>
+<li class="leaf menu-12400 menu-richiestadati"><a href="/dati_in_tempo_reale" title="">Richiesta dati</a></li>
+<li class="leaf menu-12402 menu-effemeridi"><a href="http://clima.meteoam.it/Effemeridi.php" title="">Effemeridi</a></li>
+<li class="last leaf menu-12404 menu-modellidiprevisione"><a href="/modelli-di-previsione-numerica" title="">Modelli di previsione</a></li>
+</ul></li>
+<li class="leaf menu-12286 menu-ciclonitropicali"><a href="http://www.meteoam.it/pubpage/6/26" title="">Cicloni tropicali</a></li>
+<li class="leaf menu-9713 menu-osservazioniambientali"><a href="http://www.meteoam.it/page/osservazioni-ambientali" title="">Osservazioni Ambientali</a></li>
+<li class="last leaf menu-14195 menu-rivistadimeteorologiaaeronautica"><a href="http://www.aeronautica.difesa.it/comunicazione/editoria/Pagine/default.aspx" title="Rivista di Meteorologia Aeronautica">Rivista di Meteorologia Aeronautica</a></li>
+</ul>
+</section> <!-- /.block -->
+  </div>
+<div class="footer-image row">
+<h4><a href="http://www.aeronautica.difesa.it/"><img alt='Aeronautica Militare' src="/sites/all/themes/meteoam/css/img-stile/footer_am.png" /></a></h4>
+</div>  
+    <div class="region region-legal">
+    <section id="block-menu-secondary-menu" class="block block-menu clearfix">
+
+      
+  <ul class="list-inline menu"><li class="first leaf menu-5020 menu-terminidiutilizzo"><a href="/page/condizioni-di-utilizzo-disclaimer" title="Termini di utilizzo">Termini di Utilizzo</a></li>
+<li class="leaf menu-10837 menu-accessibilit"><a href="/page/accessibilita" title="">Accessibilità</a></li>
+<li class="leaf menu-10838 menu-privacy"><a href="/page/privacy" title="">Privacy</a></li>
+<li class="last leaf menu-12270 menu-contatti"><a href="/page/come-contattarci" title="">Contatti</a></li>
+</ul>
+</section> <!-- /.block -->
+<section id="block-block-4" class="block block-block clearfix">
+
+      
+  <p>Copyright Ufficiale © ® - 2015</p>
+
+</section> <!-- /.block -->
+  </div>
+</footer>
+  <script src="/sites/all/themes/bootstrap/js/bootstrap.js?oubejp"></script>
+<script>jQuery(document).ready(function () {
+            jQuery.cookieCuttr({
+            				  cookieAnalytics: false,
+            				  cookiePolicyLink: '/page/politica-sui-cookie',
+            				  cookieMessage: 'Questo sito utilizza i Cookie. Continuando la navigazione, acconsenti al loro utilizzo. <a href="{{cookiePolicyLink}}" title="Maggiori informazioni sulla nostra cookies policy">Approfondisci</a>',
+            				  cookieAcceptButtonText: 'Accetto',
+            				  cookieNotificationLocationBottom: true,
+                			});
+          });</script>
+
+	<!-- Inizio Codice ShinyStat -->
+	<script type="text/javascript">
+	document.write("<sc"+"ript type=\"text/javascript\" language=\"JavaScript\" src=\"http://codicebusiness.shinystat.com/cgi-bin/getcod.cgi?USER=meteoam&P=2&PAG="+escape(window.location.href)+"\"></sc"+"ript>");
+	</script>
+	<noscript>
+	<a href="http://www.shinystat.com/it" target="_top">
+	<img src="http://www.shinystat.com/cgi-bin/shinystat.cgi?USER=meteoam&P=2" alt=""
+	border="0"></a>
+	</noscript>
+	<!-- Fine Codice Shinystat -->
+</body>
+</html>
