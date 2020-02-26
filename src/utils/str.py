@@ -38,6 +38,7 @@ import sys
 import time
 import string
 import textwrap
+import math
 
 from . import minisix
 from .iter import any

@@ -32,27 +32,78 @@ import time
 import socket
 import telnetlib
 
+import re
+import urllib.request
+import urllib.error
+import html
+from bs4 import BeautifulSoup as BS, SoupStrainer
+
 import supybot.conf as conf
 import supybot.utils as utils
-from supybot.commands import *
-from supybot.utils.iter import any
+import supybot.ircmsgs as ircmsgs
+import supybot.ircutils as ircutils
+import supybot.plugins as plugins
 import supybot.callbacks as callbacks
+from supybot.commands import *
+from supybot.utils.iter import any as supyany
 from supybot.i18n import PluginInternationalization, internationalizeDocstring
 _ = PluginInternationalization('Internet')
+
+from . import htmlcolors
 
 class Internet(callbacks.Plugin):
     """Provides commands to query DNS, search WHOIS databases,
     and convert IPs to hex."""
     threaded = True
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._urlsnarf_re = re.compile(r'(https?://\S+\.\S{2,})')
+        self._supported_content = ["text/html"]
+        self._last_url = dict()
+        self._last_tweet_url = dict()
+        self._http_codes = dict()
+        self._fill_http_codes()
+
+    def _urlget(self, url, *, data=None, override_ua=True):
+        req = urllib.request.Request(url)
+        if override_ua is True:
+            req.add_header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; WOW64; rv:51.0) Gecko/20100101 Firefox/51.0")
+        
+        urlh = urllib.request.urlopen(req, data)
+    
+        if urlh.code != 200:
+            desc, _ = self._http_codes[urlh.code]
+            raise urllib.error.HTTPError(url=url, code=urlh.code, msg=desc, hdrs=data, fp=urlh)
+        else:
+            return urlh
+
+    def _fill_http_codes(self):
+        urlh = self._urlget("https://www.w3.org/Protocols/rfc2616/rfc2616-sec10.html")
+        soup = BS(urlh, parseOnlyThese=SoupStrainer("h3"))
+
+        category = "Unknown"
+        for entity in soup.findAll("h3"):
+            content = entity.contents[1].strip()
+            code, desc = content.split(" ", 1)
+            try:
+                code = int(code)
+            except ValueError:
+                category = content
+            else:
+                self._http_codes[code] = (desc, category)
+
     @internationalizeDocstring
     def dns(self, irc, msg, args, host):
         """<host|ip>
 
         Returns the ip of <host> or the reverse DNS hostname of <ip>.
         """
+        banned_octets = ('192', '127', '10')
         if utils.net.isIP(host):
             hostname = socket.getfqdn(host)
-            if hostname == host:
+            host8 = host.split('.')[0]
+            if hostname == host or host8 in banned_octets:
                 irc.reply(_('Host not found.'))
             else:
                 irc.reply(hostname)
@@ -127,7 +178,7 @@ class Internet(callbacks.Plugin):
             line = line.decode('utf8').strip()
             if not line or ':' not in line:
                 continue
-            if not server and any(line.startswith, self._domain):
+            if not server and supyany(line.startswith, self._domain):
                 server = ':'.join(line.split(':')[1:]).strip().lower()
                 # Let's add this check so that we don't respond with info for
                 # a different domain. E.g., doing a whois for microsoft.com
@@ -135,24 +186,24 @@ class Internet(callbacks.Plugin):
                 if server != domain:
                     server = ''
                     continue
-            if not netrange and any(line.startswith, self._netrange):
+            if not netrange and supyany(line.startswith, self._netrange):
                 netrange = ':'.join(line.split(':')[1:]).strip()
             if not server and not netrange:
                 continue
-            if not registrar and any(line.startswith, self._registrar):
+            if not registrar and supyany(line.startswith, self._registrar):
                 registrar = ':'.join(line.split(':')[1:]).strip()
-            elif not netname and any(line.startswith, self._netname):
+            elif not netname and supyany(line.startswith, self._netname):
                 netname = ':'.join(line.split(':')[1:]).strip()
-            elif not updated and any(line.startswith, self._updated):
+            elif not updated and supyany(line.startswith, self._updated):
                 s = ':'.join(line.split(':')[1:]).strip()
                 updated = _('updated %s') % s
-            elif not created and any(line.startswith, self._created):
+            elif not created and supyany(line.startswith, self._created):
                 s = ':'.join(line.split(':')[1:]).strip()
                 created = _('registered %s') % s
-            elif not expires and any(line.startswith, self._expires):
+            elif not expires and supyany(line.startswith, self._expires):
                 s = ':'.join(line.split(':')[1:]).strip()
                 expires = _('expires %s') % s
-            elif not status and any(line.startswith, self._status):
+            elif not status and supyany(line.startswith, self._status):
                 status = ':'.join(line.split(':')[1:]).strip().lower()
         if not status:
             status = 'unknown'
@@ -209,6 +260,201 @@ class Internet(callbacks.Plugin):
                     ret += '0' * missing
         irc.reply(ret)
     hexip = wrap(hexip, ['ip'])
+
+    def _address_or_lasturl(self, address, last_url):
+        if not address and not last_url:
+            return
+
+        if address:
+            for prefix in ("", "https://", "http://"):
+                s = prefix + address
+                res = self._urlsnarf_re.match(ircutils.stripFormatting(s))
+                if res:
+                    address = res.group(1)
+                    break
+            else:
+                raise urllib.error.URLError(reason="invalid url: '%s'" % address)
+
+        return address or last_url
+
+    @staticmethod
+    def _read_chunked(urlh, chunksize=8192):
+        buf = b''
+
+        while True:
+            data = urlh.read(chunksize)
+
+            if data == b'':
+                break
+
+            buf += data
+
+            yield buf
+
+    def _title(self, url):
+        urlh = self._urlget(url, override_ua=False)
+
+        info = urlh.info()
+        if info.get_content_type() not in self._supported_content:
+            s = "(%s): Content-Type: %s - Content-Length: %s"
+            return s % (utils.str.shorten(url), info["Content-Type"], info["Content-Length"])
+
+        #soup = BS(urlh, parse_only=SoupStrainer('title', limit=1))
+        #if soup.text:
+        #    title_text = html.unescape(soup.text)
+        #    return "Title (%s): %s" % (utils.str.shorten(url), title_text)
+
+        for webpage in self._read_chunked(urlh):
+            mtch = re.search(b"<title>(.+)</title>", webpage, re.DOTALL)
+            if mtch:
+                try:
+                    charset = info.get_charsets()[0] or "utf8"
+                except IndexError:
+                    charset = "ascii"
+
+                match_text = mtch.group(1)
+                title_text = html.unescape(match_text.strip().decode(charset))
+
+                return "Title (%s): %s" % (utils.str.shorten(url), title_text)
+
+    def _checkpoint(self):
+        t = time.monotonic() - self._t
+
+        self._t = time.monotonic()
+
+        return t
+
+    @wrap(['channeldb', optional('text')])
+    def title(self, irc, msg, args, channel, address):
+        """ [url] """
+
+        last_url = self._last_url.get(channel)
+        url = self._address_or_lasturl(address, last_url)
+
+        if url is None:
+            return
+
+        title = self._title(url)
+
+        if title:
+            irc.reply(title)
+
+    def _tweet(self, url):
+        urlh = self._urlget(url, override_ua=False)
+
+        soup = BS(urlh)
+        tweet_text = soup.find("p", {"class": "tweet-text"})
+        if tweet_text and tweet_text.text != "":
+            content = []
+
+            for child in tweet_text:
+                try:
+                    if "u-hidden" not in child.attrs["class"]:
+                        content.append(child.text)
+                except AttributeError:
+                    content.append(child)
+
+            if not content:
+                media = soup.find("div", {"class": "AdaptiveMedia-container"})
+                if media:
+                    img = media.find("img")
+                    if img:
+                        content.append(img["src"])
+
+            if content:
+                return "Tweet (%s): %s" % (utils.str.shorten(url), "".join(content))
+
+    @wrap(['channeldb', optional('text')])
+    def tweet(self, irc, msg, args, channel, address):
+        """ [url] """
+        last_url = self._last_tweet_url.get(channel)
+        url = self._address_or_lasturl(address, last_url)
+
+        if url is None:
+            return
+
+        tweet = self._tweet(url)
+        tweet = re.sub(r"\n+", " | ", tweet)
+        if tweet:
+            irc.reply(tweet)
+
+    @wrap(['channeldb'])
+    def lasturl(self, irc, msg, args, channel):
+        """ """
+        if channel in self._last_url:
+            irc.reply(self._last_url[channel], prefixNick=True)
+
+    @wrap(['channeldb'])
+    def lasttweet(self, irc, msg, args, channel):
+        """ """
+        if channel in self._last_tweet_url:
+            irc.reply(self._last_tweet_url[channel], prefixNick=True)
+
+    @wrap(['long'])
+    def http(self, irc, msg, args, code):
+        """<http_code> """
+        try:
+            desc, category = self._http_codes[code]
+            irc.reply("%s, HTTP %d %s" % (category, code, desc), prefixNick=True)
+        except KeyError:
+            irc.error("unknown HTTP code: %d" % code)
+
+    @wrap(["text"])
+    def rgb(self, irc, msg, args, text):
+        """<[#]xxxxxx>|<r, g, b>
+        
+        Returns the HTML color name or the closest color.
+        """
+        args = []
+        color = text.split()
+
+        try:
+           if len(color) == 3:
+                args = [int(c) for c in color]
+           elif len(color) == 1:
+                args = color
+           else:
+                raise ValueError
+        except ValueError:
+            irc.error("Invalid input: {}".format(color))
+        else:
+            irc.reply(htmlcolors.rgb(*args), prefixNick=True)
+
+    def doPrivmsg(self, irc, msg):
+        if not irc.isChannel(msg.args[0]):
+            return
+        channel = plugins.getChannel(msg.args[0])
+
+        if callbacks.addressed(irc.nick, msg):
+            return
+
+        if ircmsgs.isAction(msg):
+            text = ircmsgs.unAction(msg)
+        elif not ircmsgs.isCtcp(msg):
+            text = msg.args[1]
+        else:
+            return
+
+        res = self._urlsnarf_re.search(ircutils.stripFormatting(text))
+        if res:
+            url = utils.str.try_coding(res.group(1))
+            urlsplt = urllib.parse.urlsplit(url)
+
+            if urlsplt.netloc.endswith("twitter.com"):
+                self._last_tweet_url[channel] = url
+            else:
+                self._last_url[channel] = url
+
+            if self.registryValue("ytAutoTitle", channel):
+                isYtUrl = urlsplt.netloc in ("www.youtube.com", "youtube.com", "youtu.be")
+                botNicks = self.registryValue("botNames", channel).split()
+                isHumanBeing = not supyany(msg.nick.startswith, botNicks)
+
+                if (urlsplt.path or urlsplt.query) and isYtUrl and isHumanBeing:
+                    title = self._title(url)
+                    if title:
+                        irc.reply(title)
+
 Internet = internationalizeDocstring(Internet)
 
 Class = Internet

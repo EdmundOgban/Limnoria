@@ -42,9 +42,10 @@ def configure(advanced):
 
 
 Internet = conf.registerPlugin('Internet')
-# This is where your configuration variables (if any) should go.  For example:
-# conf.registerGlobalValue(Internet, 'someConfigVariableName',
-#     registry.Boolean(False, _("""Help for someConfigVariableName.""")))
-
+# This is where your configuration variables (if any) should go.
+conf.registerChannelValue(Internet, 'ytAutoTitle',
+    registry.Boolean(True, _("""Automatically reply with the title of the Youtube page when linked on a channel.""")))
+conf.registerChannelValue(Internet, 'botNames',
+    registry.String('', _("""Bot nicknames list.""")))
 
 # vim:set shiftwidth=4 softtabstop=4 expandtab textwidth=79:
