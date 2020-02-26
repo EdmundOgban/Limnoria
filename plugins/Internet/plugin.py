@@ -99,7 +99,7 @@ class Internet(callbacks.Plugin):
 
         Returns the ip of <host> or the reverse DNS hostname of <ip>.
         """
-        banned_octets = ('192', '127', '10')
+        banned_octets = ('192', '172', '127', '10')
         if utils.net.isIP(host):
             hostname = socket.getfqdn(host)
             host8 = host.split('.')[0]
