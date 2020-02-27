@@ -391,8 +391,14 @@ def normalizeBase(*args, ensure_byte=False):
         else:
             base = 10
             num = arg
-        conv = minisix.long(num, base)
 
+        try:
+            conv = minisix.long(num, base)
+        except ValueError:
+            raise ValueError("invalid literal with base {}: '{}'".format(base, num))
+
+        if mtch and prefix in literals_base:
+            num = num[2:]
         if ensure_byte and conv > 255:
             raise ValueError("Invalid byte: '{}'".format(num))
 
