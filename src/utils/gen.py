@@ -382,6 +382,8 @@ def normalizeBase(*args, ensure_byte=False):
         if mtch:
             l, r = mtch.span()
             base = int(mtch.group(1))
+            if base == 0:
+                raise ValueError("base 0 is not allowed here.")
             num = arg[:l]
         elif prefix in literals_base:
             base = literals_base[prefix]
