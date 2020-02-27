@@ -380,10 +380,10 @@ def normalizeBase(*args, ensure_byte=False):
         prefix = arg[:2].lower()
 
         if mtch:
-            l, r = mtch.span()
             base = int(mtch.group(1))
             if base == 0:
                 raise ValueError("base 0 is not allowed here.")
+            l, r = mtch.span()
             num = arg[:l]
         elif prefix in literals_base:
             base = literals_base[prefix]
