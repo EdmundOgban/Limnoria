@@ -364,7 +364,7 @@ def baseToLiteral(num, base):
     base_literals = {2: "0b", 8: "0o", 16: "0x"}
     num = str(num)
 
-    if base in (2, 8, 16):
+    if base in base_literals:
         num = base_literals[base] + num.upper()
     else:
         num = num.upper()
