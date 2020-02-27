@@ -400,7 +400,7 @@ def normalizeBase(*args, ensure_byte=False):
         if mtch and prefix in literals_base:
             num = num[2:]
         if ensure_byte and conv > 255:
-            raise ValueError("Invalid byte: '{}'".format(baseToLiteral(num, base)))
+            raise ValueError("Invalid byte in base {}: '{}'".format(base, num))
 
         yield num.upper(), conv, base
 
