@@ -375,6 +375,7 @@ def normalizeBase(*args, ensure_byte=False):
     literals_base = {"0b": 2, "0o": 8, "0x": 16}
 
     for arg in args:
+        arg = str(arg)
         mtch = re.search(r"\\(\d{1,2})$", arg)
         prefix = arg[:2].lower()
 
@@ -388,7 +389,7 @@ def normalizeBase(*args, ensure_byte=False):
         else:
             base = 10
             num = arg
-        conv = int(num, base)
+        conv = minisix.long(num, base)
 
         if ensure_byte and conv > 255:
             raise ValueError("Invalid byte: '{}'".format(num))

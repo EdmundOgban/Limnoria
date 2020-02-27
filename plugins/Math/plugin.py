@@ -85,7 +85,7 @@ class Math(callbacks.Plugin):
 
         try:
             for number, norm, frm in utils.gen.normalizeBase(*numbers.split()):
-                conv = self._convertBaseToBase(norm, to, 10)
+                conv = self._convertDecimalToBase(norm, to)
                 subsfrm = _toSubscript(frm)
                 substo = _toSubscript(to)
                 L.append("{}{} = {}{}".format(number, subsfrm, conv, substo))
@@ -96,6 +96,8 @@ class Math(callbacks.Plugin):
 
     def _convertDecimalToBase(self, number, base):
         """Convert a decimal number to another base; returns a string."""
+        if base == 10:
+            return str(number)
         if number == 0:
             return '0'
         elif number < 0:
@@ -114,14 +116,6 @@ class Math(callbacks.Plugin):
             number = number // base
         digits.reverse()
         return '-'*negative + ''.join(digits)
-
-    def _convertBaseToBase(self, number, toBase, fromBase):
-        """Convert a number from any base, 2 through 36, to any other
-        base, 2 through 36. Returns a string."""
-        number = minisix.long(str(number), fromBase)
-        if toBase == 10:
-            return str(number)
-        return self._convertDecimalToBase(number, toBase)
 
     def _floatToString(self, x):
         if -1e-10 < x < 1e-10:
