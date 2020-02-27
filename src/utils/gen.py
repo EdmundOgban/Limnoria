@@ -376,7 +376,7 @@ def normalizeBase(*args, ensure_byte=False):
 
     for arg in args:
         mtch = re.search(r"\\(\d{1,2})$", arg)
-        prefix, num = arg[:2].lower(), arg[2:]
+        prefix = arg[:2].lower()
 
         if mtch:
             l, r = mtch.span()
@@ -384,10 +384,10 @@ def normalizeBase(*args, ensure_byte=False):
             num = arg[:l]
         elif prefix in literals_base:
             base = literals_base[prefix]
+            num = arg[2:]
         else:
             base = 10
             num = arg
-
         conv = int(num, base)
 
         if ensure_byte and conv > 255:
