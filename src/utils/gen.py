@@ -372,6 +372,8 @@ def baseToLiteral(num, base):
     return num
 
 def normalizeBase(*args, ensure_byte=False):
+    literals_base = {"0b": 2, "0o": 8, "0x": 16}
+
     for arg in args:
         mtch = re.search(r"\\(\d{1,2})$", arg)
         prefix, num = arg[:2].lower(), arg[2:]
@@ -380,12 +382,8 @@ def normalizeBase(*args, ensure_byte=False):
             l, r = mtch.span()
             base = int(mtch.group(1))
             num = arg[:l]
-        elif prefix.startswith("0b"):
-            base = 2
-        elif prefix.startswith("0o"):
-            base = 8
-        elif prefix.startswith("0x"):
-            base = 16
+        elif prefix in literals_base:
+            base = literals_base[prefix]
         else:
             base = 10
             num = arg
