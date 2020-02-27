@@ -80,7 +80,7 @@ class Internet(callbacks.Plugin):
 
     def _fill_http_codes(self):
         urlh = self._urlget("https://www.w3.org/Protocols/rfc2616/rfc2616-sec10.html")
-        soup = BS(urlh, parseOnlyThese=SoupStrainer("h3"))
+        soup = BS(urlh, parse_only=SoupStrainer("h3"))
 
         category = "Unknown"
         for entity in soup.findAll("h3"):

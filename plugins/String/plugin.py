@@ -67,8 +67,8 @@ class String(callbacks.Plugin):
         Returns the character associated with the 8-bit value <number>
         """
         it = utils.gen.normalizeBase(*text.split(), ensure_byte=True)
-        s = " ".join("{}='{}'".format(a, chr(n)) for a, n, b in it)
-        irc.reply(s)
+        s = ("{}='{}'".format(utils.gen.baseToLiteral(a, b), chr(n)) for a, n, b in it)
+        irc.reply(" ".join(s))
 
     @internationalizeDocstring
     def encode(self, irc, msg, args, encoding, text):

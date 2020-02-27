@@ -64,12 +64,14 @@ class Math(callbacks.Plugin):
     """Provides commands to work with math, such as a calculator and
     a unit converter."""
     @internationalizeDocstring
-    @wrap([getopts({'to': 'int'}), 'text'])
+    @wrap([getopts({'to': ('int', 'base', lambda i: 2 <= i <= 36)}), 'text'])
     def base(self, irc, msg, args, optlist, numbers):
-        """[--to <base>] <[0x|0o|0b]number> [<[0x|0o|0b]number> ...]
+        """[--to <base>] <[0x|0o|0b]number[\<fromBase>]> [<[0x|0o|0b]number[\<fromBase>]> ...]
 
         Converts number (or numbers, separated by space) to base <base>.
         If <base> is left out, it converts to decimal.
+        You can prefix the number with 0x, 0o or 0b,
+        or specify a nonstandard base suffixing \fromBase to the number.
         """
         L = []
 
@@ -82,13 +84,10 @@ class Math(callbacks.Plugin):
                 to = v
 
         try:
-            for number in numbers.split():
-                number, norm, frm = next(utils.gen.normalizeBase(number))
+            for number, norm, frm in utils.gen.normalizeBase(*numbers.split()):
                 conv = self._convertBaseToBase(norm, to, 10)
                 subsfrm = _toSubscript(frm)
                 substo = _toSubscript(to)
-                if frm != 10:
-                    number = number[2:]
                 L.append("{}{} = {}{}".format(number, subsfrm, conv, substo))
         except ValueError as e:
             irc.error(_(str(e)))

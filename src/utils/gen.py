@@ -37,6 +37,7 @@ import textwrap
 import warnings
 import functools
 import traceback
+import re
 import collections.abc
 
 
@@ -359,27 +360,42 @@ def callTracer(fd=None, basename=True):
             print('%s: %s(%s)' % (filename, funcname, lineno), file=fd)
     return tracer
 
+def baseToLiteral(num, base):
+    base_literals = {2: "0b", 8: "0o", 16: "0x"}
+    num = str(num)
+
+    if base in (2, 8, 16):
+        num = base_literals[base] + num.upper()
+    else:
+        num = num.upper()
+
+    return num
+
 def normalizeBase(*args, ensure_byte=False):
     for arg in args:
+        mtch = re.search(r"\\(\d{1,2})$", arg)
         prefix, num = arg[:2].lower(), arg[2:]
 
-        try:
-            if prefix.startswith("0b"):
-                base = 2
-            elif prefix.startswith("0o"):
-                base = 8
-            elif prefix.startswith("0x"):
-                base = 16
-            else:
-                base = 10
+        if mtch:
+            l, r = mtch.span()
+            base = int(mtch.group(1))
+            num = arg[:l]
+        elif prefix.startswith("0b"):
+            base = 2
+        elif prefix.startswith("0o"):
+            base = 8
+        elif prefix.startswith("0x"):
+            base = 16
+        else:
+            base = 10
+            num = arg
 
-            conv = int(arg, base)
+        conv = int(num, base)
 
-            if ensure_byte and conv > 255:
-                raise ValueError("Invalid byte: '{}'".format(arg))
-        except ValueError:
-            raise
+        if ensure_byte and conv > 255:
+            raise ValueError("Invalid byte: '{}'".format(num))
 
-        yield (prefix + num.upper(), conv, base)
+        yield num.upper(), conv, base
+
 
 # vim:set shiftwidth=4 softtabstop=4 expandtab textwidth=79:
