@@ -80,7 +80,7 @@ class Shiggles(callbacks.Plugin):
             s = s.upper()
 
         irc.reply(s)
-        
+
     def doPrivmsg(self, irc, msg):
         if not callbacks.addressed(irc.nick, msg):
             return

@@ -35,42 +35,40 @@ import codecs
 import base64
 import binascii
 
-import supybot.utils as utils
-from supybot.commands import *
-import supybot.utils.minisix as minisix
-import supybot.plugins as plugins
-import supybot.commands as commands
-import supybot.ircutils as ircutils
-import supybot.callbacks as callbacks
+from supybot import utils, plugins, commands, ircutils, callbacks
 from supybot.i18n import PluginInternationalization, internationalizeDocstring
+from supybot.utils import minisix
+from supybot.commands import *
+
 _ = PluginInternationalization('String')
 
-from . import gen
+from . import passwdgen
 
 import multiprocessing
 
 class String(callbacks.Plugin):
     """Provides useful commands for manipulating characters and strings."""
-    @internationalizeDocstring
-    def ord(self, irc, msg, args, letter):
-        """<letter>
 
-        Returns the 8-bit value of <letter>.
+    @internationalizeDocstring
+    @wrap(['text'])
+    def ord(self, irc, msg, args, text):
+        """<text>
+
+        Returns the 8-bit value[s] of <text>.
         """
-        irc.reply(str(ord(letter)))
-    ord = wrap(ord, ['letter'])
+        s = " ".join("'{}'={}".format(c, str(ord(c))) for c in text)
+        irc.reply(s)
 
     @internationalizeDocstring
-    def chr(self, irc, msg, args, i):
-        """<number>
+    @wrap(['text'])
+    def chr(self, irc, msg, args, text):
+        """[0<x|o|b>]<number>[ [0<x|o|b>]<number> ...]
 
         Returns the character associated with the 8-bit value <number>
         """
-        try:
-            irc.reply(chr(i), stripCtcp=False)
-        except ValueError:
-            irc.error(_('That number doesn\'t map to an 8-bit character.'))
-    chr = wrap(chr, ['int'])
+        it = utils.gen.normalizeBase(*text.split(), ensure_byte=True)
+        s = " ".join("{}='{}'".format(a, chr(n)) for a, n, b in it)
+        irc.reply(s)
 
     @internationalizeDocstring
     def encode(self, irc, msg, args, encoding, text):
@@ -253,7 +251,7 @@ class String(callbacks.Plugin):
             cnt = 1
         res = []
         for i in range(cnt):
-            res.append(gen.passgen(length))
+            res.append(passwdgen.passgen(length))
         irc.reply(", ".join(res))
 
 Class = String

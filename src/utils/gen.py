@@ -359,4 +359,27 @@ def callTracer(fd=None, basename=True):
             print('%s: %s(%s)' % (filename, funcname, lineno), file=fd)
     return tracer
 
+def normalizeBase(*args, ensure_byte=False):
+    for arg in args:
+        prefix, num = arg[:2].lower(), arg[2:]
+
+        try:
+            if prefix.startswith("0b"):
+                base = 2
+            elif prefix.startswith("0o"):
+                base = 8
+            elif prefix.startswith("0x"):
+                base = 16
+            else:
+                base = 10
+
+            conv = int(arg, base)
+
+            if ensure_byte and conv > 255:
+                raise ValueError("Invalid byte: '{}'".format(arg))
+        except ValueError:
+            raise
+
+        yield (prefix + num.upper(), conv, base)
+
 # vim:set shiftwidth=4 softtabstop=4 expandtab textwidth=79:

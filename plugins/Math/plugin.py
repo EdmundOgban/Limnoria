@@ -48,26 +48,52 @@ from supybot.utils.math_evaluator import safe_eval, InvalidNode, SAFE_ENV
 
 baseArg = ('int', 'base', lambda i: i <= 36)
 
+def _toSubscript(number):
+    unirange = [chr(0x2080+i) for i in range(10)]
+    number = abs(number)
+    out = []
+
+    while number > 0:
+        idx = number % 10
+        out.append(unirange[idx])
+        number //= 10
+
+    return "".join(reversed(out))
+
 class Math(callbacks.Plugin):
     """Provides commands to work with math, such as a calculator and
     a unit converter."""
     @internationalizeDocstring
-    def base(self, irc, msg, args, frm, to, number):
-        """<fromBase> [<toBase>] <number>
+    @wrap([getopts({'to': 'int'}), 'text'])
+    def base(self, irc, msg, args, optlist, numbers):
+        """[--to <base>] <[0x|0o|0b]number> [<[0x|0o|0b]number> ...]
 
-        Converts <number> from base <fromBase> to base <toBase>.
-        If <toBase> is left out, it converts to decimal.
+        Converts number (or numbers, separated by space) to base <base>.
+        If <base> is left out, it converts to decimal.
         """
-        if not number:
-            number = str(to)
-            to = 10
+        L = []
+
         try:
-            irc.reply(self._convertBaseToBase(number, to, frm))
-        except ValueError:
-            irc.error(_('Invalid <number> for base %s: %s') % (frm, number))
-    base = wrap(base, [('int', 'base', lambda i: 2 <= i <= 36),
-                       optional(('int', 'base', lambda i: 2 <= i <= 36), 10),
-                       additional('something')])
+            k, v = optlist[0]
+        except IndexError:
+            to = 10
+        else:
+            if k == "to":
+                to = v
+
+        try:
+            for number in numbers.split():
+                number, norm, frm = next(utils.gen.normalizeBase(number))
+                conv = self._convertBaseToBase(norm, to, 10)
+                subsfrm = _toSubscript(frm)
+                substo = _toSubscript(to)
+                if frm != 10:
+                    number = number[2:]
+                L.append("{}{} = {}{}".format(number, subsfrm, conv, substo))
+        except ValueError as e:
+            irc.error(_(str(e)))
+        else:
+            irc.reply(", ".join(L))
 
     def _convertDecimalToBase(self, number, base):
         """Convert a decimal number to another base; returns a string."""
