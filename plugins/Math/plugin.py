@@ -46,7 +46,7 @@ _ = PluginInternationalization('Math')
 from .local import convertcore
 from supybot.utils.math_evaluator import safe_eval, InvalidNode, SAFE_ENV
 
-baseArg = ('int', 'base', lambda i: i <= 36)
+baseArg = ('int', 'base', lambda i: 2 <= i <= 36)
 
 def _toSubscript(number):
     unirange = [chr(0x2080+i) for i in range(10)]
@@ -64,7 +64,7 @@ class Math(callbacks.Plugin):
     """Provides commands to work with math, such as a calculator and
     a unit converter."""
     @internationalizeDocstring
-    @wrap([getopts({'to': ('int', 'base', lambda i: 2 <= i <= 36)}), 'text'])
+    @wrap([getopts({'to': baseArg}), 'text'])
     def base(self, irc, msg, args, optlist, numbers):
         """[--to <base>] <[0x|0o|0b]number[\<fromBase>]> [<[0x|0o|0b]number[\<fromBase>]> ...]
 
