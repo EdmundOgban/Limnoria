@@ -747,6 +747,26 @@ def getText(irc, msg, args, state):
     else:
         raise IndexError
 
+def getPercentage(irc, msg, args, state):
+    if args:
+        arg = args[0]
+        try:
+            if arg.endswith("%"):
+                arg = arg[:-1]
+            else:
+                raise ValueError
+
+            arg = float(arg)
+            if not 0 <= arg <= 100:
+                raise ValueError
+        except ValueError:
+            state.errorInvalid(_('percentage'))
+        else:
+            state.args.append(arg/100.)
+            del args[0]
+    else:
+        raise IndexError
+
 wrappers = ircutils.IrcDict({
     'admin': admin,
     'anything': anything,
@@ -798,6 +818,7 @@ wrappers = ircutils.IrcDict({
     'op': getOp,
     'otherUser': getOtherUser,
     'owner': owner,
+    'percentage': getPercentage,
     'plugin': getPlugin,
     'positiveInt': getPositiveInt,
     'private': private,
