@@ -291,6 +291,111 @@ class Math(callbacks.Plugin):
         irc.reply(convertcore.units(type))
     units = wrap(units, [additional('text')])
 
+    @wrap(['text'])
+    def prop(self, irc, msg, args, text):
+        """ a:b=c:d """
+        text = text.split()[0]
+        match = re.match(r'^([\w.]+):([\w.]+)=([\w.]+):([\w.]+)$', text)
+        if not match:
+            irc.error('Malformed proportion.')
+            return
+
+        terms = match.groups()
+        unknown = []
+        for (x, y) in enumerate(terms, 1):
+            try:
+                float(y)
+            except ValueError:
+                unknown.append((x, y))
+
+        if not unknown:
+            irc.error('No unknown in that proportion.')
+            return
+        elif len(unknown) > 1:
+            irc.error('Multiple unknowns not allowed.')
+            return
+
+        unknown, literal = unknown[0]
+        mul = []
+        div = None
+        pledge = None
+
+        for term in terms:
+            if term == literal:
+                continue
+
+            term = float(term)
+
+            if unknown == 1:
+                if len(mul) < 2:
+                    mul.append(term)
+                else:
+                    div = term
+            elif unknown in (2, 3):
+                if not pledge:
+                    mul.append(term)
+                    pledge = True
+                else:
+                    div = term
+                    pledge = False
+            elif unknown == 4:
+                if not div:
+                    div = term
+                else:
+                    mul.append(term)
+
+        res = mul[0] * mul[1] / div
+        irc.reply(f'{literal} = {res:G}')
+
+    @wrap(['float', 'float'])
+    def percent(self, irc, msg, args, u1, u2):
+        """ <a> <b> """
+        try:
+            res = (u1 / u2) * 100
+            irc.reply(f'{res:.4G}%', prefixNick=True)
+        except ZeroDivisionError:
+            irc.error('Can\'t divide by zero.')
+
+    vg = 0.6 # Glicerine
+    pg = 0.4 # Propylene Glycol
+    nicotine_conc = 160.0 # mg/ml
+
+    @wrap(['float', 'percentage', optional('percentage')])
+    def juice(self, irc, msg, args, ml, aroma_percentage, lvg):
+        """ <ml> <concentration%> [vg%]
+        if vg is specified, pg will be calculated automatically """
+
+        vg = self.vg if lvg is None else lvg
+        pg = self.pg if lvg is None else 1 - lvg
+
+        base_density = (1.26 * vg + 1.036 * pg)
+
+        base_percentage = 1 - aroma_percentage
+        aroma = round(ml * 1.036 * aroma_percentage, 2)
+        base = round(ml * base_density * base_percentage, 2)
+
+        irc.reply("base: %.2fg (%d/%d), aroma: %.2fg - total: %.2fg" % (base, vg*100, pg*100, aroma, base+aroma))
+
+    @wrap(['float', 'float', optional('percentage')])
+    def baseweight(self, irc, msg, args, ml, conc, lvg):
+        """ <ml> <nicotine_concentration> [vg%]
+        if vg is specified, pg will be calculated automatically """
+        nconc = self.nicotine_conc
+
+        vg = self.vg if lvg is None else lvg
+        pg = self.pg if lvg is None else 1 - lvg
+
+        nicotine = ml * conc / nconc
+        ml -= nicotine
+        vg_ml = ml * vg * 1.26
+        pg_ml = ml * pg * 1.036
+        total = vg_ml + pg_ml + nicotine
+
+        s = ("vg: %.2fg (%d%%) - pg: %.2fg (%d%%) - nicotine: %.2fg "
+             "(%dmg/ml bottle) - total: %.2fg") % (
+            vg_ml, vg*100, pg_ml, pg*100, nicotine, nconc, total)
+        irc.reply(s)
+
 Class = Math
 
 # vim:set shiftwidth=4 softtabstop=4 expandtab textwidth=79:
