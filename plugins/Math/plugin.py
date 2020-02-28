@@ -71,7 +71,7 @@ class Math(callbacks.Plugin):
         Converts number (or numbers, separated by space) to base <base>.
         If <base> is left out, it converts to decimal.
         You can prefix the number with 0x, 0o or 0b,
-        or specify a nonstandard base suffixing \fromBase to the number.
+        or specify a nonstandard base suffixing \\fromBase to the number.
         """
         L = []
 
