@@ -47,10 +47,15 @@ __contributors__ = {}
 
 from . import config
 from . import plugin
+from . import tr_langs
+from .google import gtok, translate
 from importlib import reload
 reload(plugin) # In case we're being reloaded.
 # Add more reloads here if you add third-party modules and want them to be
 # reloaded when this plugin is reloaded.  Don't forget to import them as well!
+reload(tr_langs)
+reload(gtok)
+reload(translate)
 
 if world.testing:
     from . import test

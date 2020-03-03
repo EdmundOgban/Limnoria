@@ -43,6 +43,9 @@ import supybot.callbacks as callbacks
 from supybot.i18n import PluginInternationalization, internationalizeDocstring
 _ = PluginInternationalization('Google')
 
+from . import tr_langs
+from .google import translate as gtranslate
+
 class Google(callbacks.PluginRegexp):
     """This is a simple plugin to provide access to the Google services we
     all know and love from our favorite IRC bot."""
@@ -257,33 +260,38 @@ class Google(callbacks.PluginRegexp):
 
 
     def _translate(self, sourceLang, targetLang, text):
-        headers = dict(utils.web.defaultHeaders)
-        headers['User-Agent'] = ('Mozilla/5.0 (X11; U; Linux i686) '
-                                 'Gecko/20071127 Firefox/2.0.0.11')
+        # headers = dict(utils.web.defaultHeaders)
+        # headers['User-Agent'] = ('Mozilla/5.0 (X11; U; Linux i686) '
+                                 # 'Gecko/20071127 Firefox/2.0.0.11')
 
-        sourceLang = utils.web.urlquote(sourceLang)
-        targetLang = utils.web.urlquote(targetLang)
+        #sourceLang = utils.web.urlquote(sourceLang)
+        #targetLang = utils.web.urlquote(targetLang)
 
-        text = utils.web.urlquote(text)
+        # text = utils.web.urlquote(text)
+        # result = utils.web.getUrlFd('http://translate.googleapis.com/translate_a/single'
+                                    # '?client=gtx&dt=t&sl=%s&tl=%s&q='
+                                    # '%s' % (sourceLang, targetLang, text),
+                                    # headers).read().decode('utf8')
+        # while ',,' in result:
+            # result = result.replace(',,', ',null,')
 
-        result = utils.web.getUrlFd('http://translate.googleapis.com/translate_a/single'
-                                    '?client=gtx&dt=t&sl=%s&tl=%s&q='
-                                    '%s' % (sourceLang, targetLang, text),
-                                    headers).read().decode('utf8')
+        # while '[,' in result:
+            # result = result.replace('[,', '[')
 
-        while ',,' in result:
-            result = result.replace(',,', ',null,')
-        while '[,' in result:
-            result = result.replace('[,', '[')
-        data = json.loads(result)
+        # data = json.loads(result)
+        # try:
+            # language = data[2]
+        # except:
+            # language = 'unknown'
 
-        try:
-            language = data[2]
-        except:
-            language = 'unknown'
-
-        if data[0]:
-            return (''.join(x[0] for x in data[0]), language)
+        # if data[0]:
+            # return (''.join(x[0] for x in data[0]), language)
+        # else:
+            # return (_('No translations found.'), language)
+        sourceLang, targetLang, translations = gtranslate.tr(
+            sourceLang, targetLang, q=text)
+        if translations:
+            return translations[0], sourceLang
         else:
             return (_('No translations found.'), language)
 
@@ -302,18 +310,18 @@ class Google(callbacks.PluginRegexp):
         sourceLang, targetLang = (
             self.registryValue('sourceLang', channel) or "auto",
             self.registryValue('targetLang', channel) or "en")
-
         sl, tl, text = self._rex.match(text).groups()
         if sl and sl in tr_langs.langs:
             sourceLang = sl
         if tl and tl in tr_langs.langs:
             targetLang = tl
 
-        translated, language = self._translate(sourceLang, targetLang, text)
-
-        s = "Translate %s\N{rightwards arrow}%s (%s): %s" % (
-            language, targetLang, utils.str.shorten(text, 25), translated)
-        irc.reply(s, language)
+        sourceLang, targetLang, translations = gtranslate.tr(
+            sourceLang, targetLang, q=text)
+        shortened = utils.str.shorten(text, 18)
+        translated = "; ".join(translations)
+        irc.reply("Translate %s\N{rightwards arrow}%s (%s): %s"
+            % (sourceLang, targetLang, shortened, translated))
 
     def googleSnarfer(self, irc, msg, match):
         r"^google\s+(.*)$"

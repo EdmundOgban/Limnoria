@@ -416,10 +416,50 @@ class Internet(callbacks.Plugin):
         else:
             irc.reply(htmlcolors.rgb(*args), prefixNick=True)
 
+    def _snarfUrl(self, network, channel, text):
+        res = self._urlsnarf_re.search(ircutils.stripFormatting(text))
+        if res:
+            url = utils.str.try_coding(res.group(1))
+            urlsplt = urllib.parse.urlsplit(url)
+
+            if urlsplt.netloc.endswith("twitter.com"):
+                self._last_tweet_url[channel] = url
+            else:
+                self._last_url[channel] = url
+
+            return url, urlsplt
+
+    def _titleFromSnarfedUrl(self, channel, msg, res):
+        title = None
+
+        if res:
+            url, urlsplt = res
+            isYtUrl = urlsplt.netloc in ("www.youtube.com", "youtube.com", "youtu.be")
+            botNicks = self.registryValue("botNames", channel).split()
+            isHumanBeing = not supyany(msg.nick.startswith, botNicks)
+            if (urlsplt.path or urlsplt.query) and isYtUrl and isHumanBeing:
+                title = self._title(url)
+
+        return title
+
+    # This is needed in case of a message containing an HTTP link which starts with
+    # someone's nick that incidentally begins with the selected bot commands prefix.
+    def invalidCommand(self, irc, msg, tokens):
+        if not irc.isChannel(msg.args[0]):
+            return
+
+        channel = plugins.getChannel(msg.args[0])
+        text = " ".join(tokens)
+        res = self._snarfUrl(irc.network, channel, text)
+
+        if self.registryValue("ytAutoTitle", channel):
+            title = self._titleFromSnarfedUrl(channel, msg, res)
+            if title is not None:
+                irc.reply(title)
+
     def doPrivmsg(self, irc, msg):
         if not irc.isChannel(msg.args[0]):
             return
-        channel = plugins.getChannel(msg.args[0])
 
         if callbacks.addressed(irc.nick, msg):
             return
@@ -431,25 +471,13 @@ class Internet(callbacks.Plugin):
         else:
             return
 
-        res = self._urlsnarf_re.search(ircutils.stripFormatting(text))
-        if res:
-            url = utils.str.try_coding(res.group(1))
-            urlsplt = urllib.parse.urlsplit(url)
+        channel = plugins.getChannel(msg.args[0])
+        res = self._snarfUrl(irc.network, channel, text)
 
-            if urlsplt.netloc.endswith("twitter.com"):
-                self._last_tweet_url[channel] = url
-            else:
-                self._last_url[channel] = url
-
-            if self.registryValue("ytAutoTitle", channel):
-                isYtUrl = urlsplt.netloc in ("www.youtube.com", "youtube.com", "youtu.be")
-                botNicks = self.registryValue("botNames", channel).split()
-                isHumanBeing = not supyany(msg.nick.startswith, botNicks)
-
-                if (urlsplt.path or urlsplt.query) and isYtUrl and isHumanBeing:
-                    title = self._title(url)
-                    if title:
-                        irc.reply(title)
+        if self.registryValue("ytAutoTitle", channel):
+            title = self._titleFromSnarfedUrl(channel, msg, res)
+            if title is not None:
+                irc.reply(title)
 
 Internet = internationalizeDocstring(Internet)
 

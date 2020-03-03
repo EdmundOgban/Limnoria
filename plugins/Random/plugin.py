@@ -64,7 +64,7 @@ from . import wordsdbmgr
 
 
 DEFAULT_JAMU_LANG = "it"
-JAMU_CACHE_SIZE = 2
+JAMU_CACHE_SIZE = 10
 
 
 class MyVisitor(kyotocabinet.Visitor):
@@ -134,6 +134,23 @@ class JamuSupyGetter():
         return text
 
 
+def _build_alphabet():
+    hira = "あいうえおかがくぐけげこごさざすずせぜそぞただぢつづてでとどなぬねのはばぱふぶぷへべぺほぼぽまむめもやゆよらるれろわをんゔ"
+    yoon_roots = 'きぎき゚ひびぴしじちにみり'
+    # (this used to include "き゚" too)
+    smalls = "ゃゅょ"
+    yoons = [root + s for root in yoon_roots for s in smalls]
+    return [*hira, *yoon_roots, *yoons] # , "っ"]
+
+HIRAGANA_ALPHABET = _build_alphabet()
+
+def ratto_hiragana(min_length=6, max_length=50):
+    text = "".join(
+        random.choices(HIRAGANA_ALPHABET, k=random.randint(min_length, max_length))
+    )
+    return text
+
+
 class JamuManager(JamuFactory, JamuSupyGetter):
     def __init__(self):
         self.wdbmgr = wordsdbmgr.WordsDBManager()
@@ -183,7 +200,8 @@ class JamuManager(JamuFactory, JamuSupyGetter):
 
         #self.log.warning("JamuManager.jamu() __suicide:%s" % self.__suicide)
         while not self.__suicide:
-            hiras = randre.randre('[%s]{6,50}' % hira)
+            regex = '[{}]{{6,50}}'.format(hira)
+            hiras = "{}.".format(randre.randre(regex))
 
             if not self._pre_validator(hiras, to_lang=to_lang):
                 continue
@@ -474,7 +492,8 @@ class Random(callbacks.Plugin):
         self.jamumgr.irc = irc
         text = self.updater.request_jamu(to_lang)
 
-        irc.sendMsg(ircmsgs.privmsg(channel, text))
+        irc.reply(text)
+        #irc.sendMsg(ircmsgs.privmsg(channel, text))
 
     @wrap([("checkcapability", "owner"), "somethingWithoutSpaces", "text"])
     def jamupush(self, irc, msg, args, lang, jamu):
