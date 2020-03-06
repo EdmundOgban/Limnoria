@@ -80,7 +80,7 @@ class Internet(callbacks.Plugin):
 
     def _fill_http_codes(self):
         urlh = self._urlget("https://www.w3.org/Protocols/rfc2616/rfc2616-sec10.html")
-        soup = BS(urlh, parse_only=SoupStrainer("h3"))
+        soup = BS(urlh, "html.parser", parse_only=SoupStrainer("h3"))
 
         category = "Unknown"
         for entity in soup.findAll("h3"):
@@ -291,7 +291,6 @@ class Internet(callbacks.Plugin):
 
     def _title(self, url):
         urlh = self._urlget(url, override_ua=False)
-
         info = urlh.info()
         if info.get_content_type() not in self._supported_content:
             s = "(%s): Content-Type: %s - Content-Length: %s"
@@ -312,12 +311,10 @@ class Internet(callbacks.Plugin):
 
                 match_text = mtch.group(1)
                 title_text = html.unescape(match_text.strip().decode(charset))
-
                 return "Title (%s): %s" % (utils.str.shorten(url), title_text)
 
     def _checkpoint(self):
         t = time.monotonic() - self._t
-
         self._t = time.monotonic()
 
         return t
@@ -325,7 +322,6 @@ class Internet(callbacks.Plugin):
     @wrap(['channeldb', optional('text')])
     def title(self, irc, msg, args, channel, address):
         """ [url] """
-
         last_url = self._last_url.get(channel)
         url = self._address_or_lasturl(address, last_url)
         if url is None:
@@ -336,13 +332,21 @@ class Internet(callbacks.Plugin):
             irc.reply(title)
 
     def _tweet(self, url):
-        urlh = self._urlget(url, override_ua=False)
+        soup = BS(self._urlget(url, override_ua=False))
+        header = soup.find("div", {"class": "permalink-header"})
+        try:
+            name = header.find("span", {"class": "FullNameGroup"}).text.strip()
+        except AttributeError:
+            name = None
 
-        soup = BS(urlh)
+        try:
+            account = header.find("span", {"class": "username"}).text.strip()
+        except AttributeError:
+            account = None
+
         tweet_text = soup.find("p", {"class": "tweet-text"})
         if tweet_text and tweet_text.text != "":
             content = []
-
             for child in tweet_text:
                 try:
                     if "u-hidden" not in child.attrs["class"]:
@@ -350,29 +354,34 @@ class Internet(callbacks.Plugin):
                 except AttributeError:
                     content.append(child)
 
-            if not content:
-                media = soup.find("div", {"class": "AdaptiveMedia-container"})
-                if media:
-                    img = media.find("img")
-                    if img:
-                        content.append(img["src"])
+            media = soup.find("div", {"class": "AdaptiveMedia-container"})
+            if media:
+                imgs = media.findAll("img")
+                for img in imgs:
+                    content.extend([" ", img["src"]])
 
-            if content:
-                return "Tweet (%s): %s" % (utils.str.shorten(url), "".join(content))
+            return name, account, "".join(content)
 
     @wrap(['channeldb', optional('text')])
     def tweet(self, irc, msg, args, channel, address):
         """ [url] """
         last_url = self._last_tweet_url.get(channel)
         url = self._address_or_lasturl(address, last_url)
-
         if url is None:
             return
 
-        tweet = self._tweet(url)
-        tweet = re.sub(r"\n+", " | ", tweet)
-        if tweet:
-            irc.reply(tweet)
+        res = self._tweet(url.replace("mobile.twitter", "twitter"))
+        if res:
+            name, account, tweet = res
+            tweet = re.sub(r"\n+", " | ", tweet)
+            if name is None and account is None:
+                s = "Tweet ({}): {}".format(utils.str.shorten(url, 50), tweet)
+            elif name is None or account is None:
+                s = "Tweeted by {}: {}".format(name or account, tweet)
+            else:
+                s = "Tweeted by {} ({}): {}".format(name, account, tweet)
+
+            irc.reply(s)
 
     @wrap(['channeldb'])
     def lasturl(self, irc, msg, args, channel):
@@ -403,7 +412,6 @@ class Internet(callbacks.Plugin):
         """
         args = []
         color = text.split()
-
         try:
            if len(color) == 3:
                 args = [int(c) for c in color]
@@ -421,7 +429,6 @@ class Internet(callbacks.Plugin):
         if res:
             url = utils.str.try_coding(res.group(1))
             urlsplt = urllib.parse.urlsplit(url)
-
             if urlsplt.netloc.endswith("twitter.com"):
                 self._last_tweet_url[channel] = url
             else:
@@ -451,7 +458,6 @@ class Internet(callbacks.Plugin):
         channel = plugins.getChannel(msg.args[0])
         text = " ".join(tokens)
         res = self._snarfUrl(irc.network, channel, text)
-
         if self.registryValue("ytAutoTitle", channel):
             title = self._titleFromSnarfedUrl(channel, msg, res)
             if title is not None:
@@ -473,7 +479,6 @@ class Internet(callbacks.Plugin):
 
         channel = plugins.getChannel(msg.args[0])
         res = self._snarfUrl(irc.network, channel, text)
-
         if self.registryValue("ytAutoTitle", channel):
             title = self._titleFromSnarfedUrl(channel, msg, res)
             if title is not None:

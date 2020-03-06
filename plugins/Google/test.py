@@ -29,6 +29,7 @@
 ###
 
 from supybot.test import *
+from supybot import conf
 
 class GoogleTestCase(ChannelPluginTestCase):
     plugins = ('Google', 'Config')
@@ -80,7 +81,17 @@ class GoogleTestCase(ChannelPluginTestCase):
             self.assertNotError('fight ... !')
 
         def testTranslate(self):
-            self.assertRegexp('translate en es hello world', 'Hola mundo')
+            conf.supybot.plugins.Google.sourceLang.setValue("auto")
+            conf.supybot.plugins.Google.targetLang.setValue("it")
+            self.assertResponse('tr en-es hello world', 'Translate en→es (hello world): Hola Mundo')
+            self.assertResponse("tr ratto", "Translate it→en (ratto): rat")
+            self.assertResponse("tr rat", "Translate en→it (rat): ratto")
+            self.assertResponse("tr en-it ratto", "Translate en→it (ratto): ratto")
+            self.assertResponse("tr en-en ratto", "Translate en→en (ratto): ratto")
+            self.assertResponse("tr -en ratto", "Translate it→en (ratto): rat")
+            self.assertResponse("tr it- ratto", "Translate it→en (ratto): rat")
+            self.assertResponse("tr it-it ratto", "Translate it→it (ratto): ratto")
+            self.assertResponse("tr -it ratto", "Translate it→it (ratto): ratto")
 
         def testCalcDoesNotHaveExtraSpaces(self):
             self.assertNotRegexp('google calc 1000^2', r'\s+,\s+')

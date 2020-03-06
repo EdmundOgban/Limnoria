@@ -45,6 +45,7 @@ _ = PluginInternationalization('Math')
 
 from .local import convertcore
 from supybot.utils.math_evaluator import safe_eval, InvalidNode, SAFE_ENV
+from . import resistors
 
 baseArg = ('int', 'base', lambda i: 2 <= i <= 36)
 
@@ -395,6 +396,36 @@ class Math(callbacks.Plugin):
              "(%dmg/ml bottle) - total: %.2fg") % (
             vg_ml, vg*100, pg_ml, pg*100, nicotine, nconc, total)
         irc.reply(s)
+
+    @wrap(['text'])
+    def resbands(self, irc, msg, args, text):
+        """ <resistor_value> | <col_a> <col_b> <col_c> [<col_d>]
+        Given a resistor value, returns the 4-band or 5-band color coding.
+        You can also give three or four band colors to obtain the resistor value."""
+        args = text.split(" ")
+
+        if 3 <= len(args) <= 4:
+            try:
+                res = resistors.colors_to_value(*args)
+            except ValueError as e:
+                if "not a valid resistor color" not in str(e):
+                    raise
+            else:
+                return irc.reply(res)
+
+        try:
+            irc.reply(resistors.value_to_colors(text))
+        except (ValueError, TypeError) as e:
+            irc.error(str(e))
+
+    @wrap(['text'])
+    def restol(self, irc, msg, args, text):
+        """ <tolerance_color>
+        Given a color, returns the associated tolerance percentage value. """
+        try:
+            irc.reply(resistors.tolerance(text))
+        except (ValueError, TypeError) as e:
+            irc.error(str(e))
 
 Class = Math
 

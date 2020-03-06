@@ -295,7 +295,7 @@ class Google(callbacks.PluginRegexp):
         else:
             return (_('No translations found.'), language)
 
-    _rex = re.compile('(?:(auto|{0})?[|-]({0})?\s+)?(.+)'.format('[a-z]{2}(?:-[A-Z]{2})?'))
+    _rex = re.compile('(auto|{0})?[|-]?({0})?\s+(.+)'.format('[a-z]{2}(?:-[A-Z]{2})?'))
     @internationalizeDocstring
     @wrap(["channeldb", "text"])
     def tr(self, irc, msg, args, channel, text):
@@ -305,23 +305,35 @@ class Google(callbacks.PluginRegexp):
         language>. <source language> and <target language> take language
         codes (not language names), which are listed here:
         https://cloud.google.com/translate/docs/languages
-        """
+        """        
+        default_sl = self.registryValue('sourceLang', channel) or "auto"
+        default_tl = self.registryValue('targetLang', channel) or "en"
+        mtch = self._rex.match(text)
+        if mtch:
+            provided_sl, provided_tl, text = mtch.groups()
+        else:
+            provided_sl, provided_tl = None, None            
 
-        sourceLang, targetLang = (
-            self.registryValue('sourceLang', channel) or "auto",
-            self.registryValue('targetLang', channel) or "en")
-        sl, tl, text = self._rex.match(text).groups()
-        if sl and sl in tr_langs.langs:
-            sourceLang = sl
-        if tl and tl in tr_langs.langs:
-            targetLang = tl
-
-        sourceLang, targetLang, translations = gtranslate.tr(
+        sourceLang = provided_sl if provided_sl in tr_langs.langs else default_sl
+        targetLang = provided_tl if provided_tl in tr_langs.langs else default_tl
+        guessed_sl, _, translations = gtranslate.tr(
             sourceLang, targetLang, q=text)
+        if guessed_sl == targetLang and not provided_tl:
+            if targetLang == default_tl:
+                if default_tl == "en":
+                    targetLang = "it"
+                elif default_tl == "it":
+                    targetLang = "en"
+                else:
+                    targetLang = "en"
+
+            guessed_sl, _, translations = gtranslate.tr(
+                sourceLang, targetLang, q=text)
+
         shortened = utils.str.shorten(text, 18)
         translated = "; ".join(translations)
         irc.reply("Translate %s\N{rightwards arrow}%s (%s): %s"
-            % (sourceLang, targetLang, shortened, translated))
+            % (guessed_sl, targetLang, shortened, translated))
 
     def googleSnarfer(self, irc, msg, match):
         r"^google\s+(.*)$"
