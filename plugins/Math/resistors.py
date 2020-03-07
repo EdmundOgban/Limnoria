@@ -91,8 +91,15 @@ def colors_to_value(a, b, c, d=None):
             raise ValueError("'{}' is not a valid resistor color".format(arg))
 
     *colors, mult = args
+    forbidden = [v for k, v in idx_colors.items() if int(k) < 0]
+    for color in colors:
+        if color in forbidden:
+            raise ValueError("'{}' is not a valid digit color".format(color))
 
     digits = ''.join(colors_idx[color] for color in colors)
+    if int(digits) == 0:
+        raise ValueError("'{}' is an invalid color combination".format(" ".join(args)))
+
     zeros = int(colors_idx[mult])
 
     return _format_output(digits, zeros, c2v=True)

@@ -263,6 +263,10 @@ class MathTestCase(PluginTestCase):
 
     def testC2vExceptions(self):
         self.assertError("resbands Yellow Red Foo")
+        self.assertError("resbands Black Black Gold")
+        self.assertError("resbands Gold Gold Gold")
+        self.assertError("resbands Gold Gold Gold Silver")
+        self.assertError("resbands Gold Gold Silver Silver")
 
     def testTolerances(self):
         self.assertResponse("restol Silver", "color: Silver, resistor tolerance: 10%")
