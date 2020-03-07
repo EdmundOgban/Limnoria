@@ -124,6 +124,10 @@ class Google(callbacks.PluginRegexp):
                 opts['safe'] = v
             elif k == 'language':
                 opts['hl'] = v
+            elif k == 'fake-UA':
+                headers["User-Agent"]= ("Mozilla/5.0 (Windows NT 10.0; Win64; "
+                                "x64; rv:73.0) Gecko/20100101 Firefox/73.0")
+
         defLang = self.registryValue('defaultLanguage', channel, network)
         if 'hl' not in opts and defLang:
             opts['hl'] = defLang.strip('lang_')
@@ -229,7 +233,7 @@ class Google(callbacks.PluginRegexp):
         irc.error(_('Google seems to have no cache for that site.'))
     cache = wrap(cache, ['url'])
 
-    _fight_re = re.compile(r'id="resultStats"[^>]*>(?P<stats>[^<]*)')
+    _fight_re = re.compile(r'id="result-stats"[^>]*>(?P<stats>[^<]*)')
     @internationalizeDocstring
     def fight(self, irc, msg, args):
         """<search string> <search string> [<search string> ...]
@@ -241,9 +245,13 @@ class Google(callbacks.PluginRegexp):
         network = irc.network
         results = []
         for arg in args:
-            text = self.search(arg, channel, network, {'smallsearch': True})
-            i = text.find('id="resultStats"')
-            stats = utils.web.htmlToText(self._fight_re.search(text).group('stats'))
+            text = self.search(arg, channel, network, {'fake-UA': True})
+            mtch = self._fight_re.search(text)
+            if mtch:
+                stats = utils.web.htmlToText(mtch.group('stats'))
+            else:
+                stats = ''
+
             if stats == '':
                 results.append((0, args))
                 continue
@@ -257,7 +265,6 @@ class Google(callbacks.PluginRegexp):
             bold = repr
         s = ', '.join([format('%s: %i', bold(s), i) for (i, s) in results])
         irc.reply(s)
-
 
     def _translate(self, sourceLang, targetLang, text):
         # headers = dict(utils.web.defaultHeaders)
