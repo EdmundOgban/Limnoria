@@ -101,7 +101,6 @@ def colors_to_value(a, b, c, d=None):
         raise ValueError("'{}' is an invalid color combination".format(" ".join(args)))
 
     zeros = int(colors_idx[mult])
-
     return _format_output(digits, zeros, c2v=True)
 
 
