@@ -29,6 +29,7 @@
 ###
 
 from supybot.test import *
+from unittest import skip
 
 class ShrinkUrlTestCase(ChannelPluginTestCase):
     plugins = ('ShrinkUrl',)
@@ -39,8 +40,9 @@ class ShrinkUrlTestCase(ChannelPluginTestCase):
             'term=all+your+base+are+belong+to+us'
     tests = {'tiny': [(sfUrl, r'http://tinyurl.com/b7wyvfz'),
                       (udUrl, r'http://tinyurl.com/u479')],
-             'ur1': [(sfUrl, r'http://ur1.ca/ceqh8'),
-                     (udUrl, r'http://ur1.ca/9xl9k')],
+             # ur1.ca is no longer active
+             #'ur1': [(sfUrl, r'http://ur1.ca/ceqh8'),
+             #        (udUrl, r'http://ur1.ca/9xl9k')],
              'x0': [(sfUrl, r'https://x0.no/a53s'),
                     (udUrl, r'https://x0.no/0l2k')]
             }
@@ -87,6 +89,7 @@ class ShrinkUrlTestCase(ChannelPluginTestCase):
         def testTinysnarf(self):
             self._snarf('tiny')
 
+        @skip('No longer active')
         def testUr1snarf(self):
             self._snarf('ur1')
 

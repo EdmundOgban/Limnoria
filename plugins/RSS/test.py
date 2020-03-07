@@ -60,9 +60,10 @@ def constant(content):
         return minisix.io.BytesIO(content)
     return f
 
-url = 'http://www.advogato.org/rss/articles.xml'
+url = 'https://www.advogato.org/rss/articles.xml'
 class RSSTestCase(ChannelPluginTestCase):
     plugins = ('RSS','Plugin')
+
     def testRssAddBadName(self):
         self.assertError('rss add "foo bar" %s' % url)
 

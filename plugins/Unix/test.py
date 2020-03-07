@@ -124,7 +124,8 @@ if os.name == 'posix':
             self.assertError('unix ping --c a 127.0.0.1')
             self.assertRegexp('unix ping --c 11 127.0.0.1','10 packets')
             self.assertRegexp('unix ping 127.0.0.1','5 packets')
-        @skipUnlessPing
+        #@skipUnlessPing
+        @skip("Locale dependent")
         def testPingInterval(self):
             self.assertNotError('unix ping --i 1 --c 1 127.0.0.1')
             self.assertError('unix ping --i a --c 1 127.0.0.1')
@@ -152,7 +153,8 @@ if os.name == 'posix':
             self.assertRegexp('unix ping6 --c 11 ::1','10 packets',
                     timeout=12)
             self.assertRegexp('unix ping6 ::1','5 packets')
-        @skipUnlessPing6
+        #@skipUnlessPing6
+        @skip("Locale dependent")
         def testPing6Interval(self):
             self.assertNotError('unix ping6 --i 1 --c 1 ::1')
             self.assertError('unix ping6 --i a --c 1 ::1')

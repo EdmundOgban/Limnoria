@@ -203,35 +203,35 @@ class ShrinkUrl(callbacks.PluginRegexp):
             irc.errorPossibleBug(str(e))
     tiny = thread(wrap(tiny, ['httpUrl']))
 
-    _ur1Api = 'http://ur1.ca/'
-    _ur1Regexp = re.compile(r'<a href="(?P<url>[^"]+)">')
-    @retry
-    def _getUr1Url(self, url):
-        try:
-            return self.db.get('ur1ca', utils.web.urlquote(url))
-        except KeyError:
-            parameters = utils.web.urlencode({'longurl': url})
-            response = utils.web.getUrl(self._ur1Api, data=parameters)
-            ur1ca = self._ur1Regexp.search(response.decode()).group('url')
-            if ur1ca:
-                self.db.set('ur1', url, ur1ca)
-                return ur1ca
-            else:
-                raise ShrinkError(response)
+    # _ur1Api = 'http://ur1.ca/'
+    # _ur1Regexp = re.compile(r'<a href="(?P<url>[^"]+)">')
+    # @retry
+    # def _getUr1Url(self, url):
+        # try:
+            # return self.db.get('ur1ca', utils.web.urlquote(url))
+        # except KeyError:
+            # parameters = utils.web.urlencode({'longurl': url})
+            # response = utils.web.getUrl(self._ur1Api, data=parameters)
+            # ur1ca = self._ur1Regexp.search(response.decode()).group('url')
+            # if ur1ca:
+                # self.db.set('ur1', url, ur1ca)
+                # return ur1ca
+            # else:
+                # raise ShrinkError(response)
 
-    def ur1(self, irc, msg, args, url):
-        """<url>
+    # def ur1(self, irc, msg, args, url):
+        # """<url>
 
-        Returns an ur1 version of <url>.
-        """
-        try:
-            ur1url = self._getUr1Url(url)
-            m = irc.reply(ur1url)
-            if m is not None:
-                m.tag('shrunken')
-        except ShrinkError as e:
-            irc.error(str(e))
-    ur1 = thread(wrap(ur1, ['httpUrl']))
+        # Returns an ur1 version of <url>.
+        # """
+        # try:
+            # ur1url = self._getUr1Url(url)
+            # m = irc.reply(ur1url)
+            # if m is not None:
+                # m.tag('shrunken')
+        # except ShrinkError as e:
+            # irc.error(str(e))
+    # ur1 = thread(wrap(ur1, ['httpUrl']))
 
     _x0Api = 'https://x0.no/api/?%s'
     @retry

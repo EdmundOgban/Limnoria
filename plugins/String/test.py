@@ -94,13 +94,18 @@ class StringTestCase(PluginTestCase):
             self.assertRegexp('chr %s' % i, regexp)
 
     def testOrd(self):
-        for c in map(chr, range(256)):
+        for c in map(chr, range(1, 256)):
+            if c in ("\n", "\r"):
+                continue
             i = ord(c)
-            self.assertResponse('ord %s' % utils.str.dqrepr(c), str(i))
+            self.assertResponse('ord %s' % utils.str.dqrepr(c), "'{}'={}".format(c, str(i)))
+
+        s = "foo"
+        expected = " ".join("'{}'={}".format(c, ord(c)) for c in s)
+        self.assertResponse('ord {}'.format(s), expected)
 
     def testMd5(self):
         self.assertResponse('md5 supybot', '1360578d1276e945cc235654a53f9c65')
-
 
     def testEncodeDecode(self):
         # This no longer works correctly.  It almost seems like were throwing
