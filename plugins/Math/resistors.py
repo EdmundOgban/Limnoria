@@ -46,7 +46,10 @@ def _parse_v2c(s):
     except ValueError:
         raise ValueError("Invalid input: '{}'".format(s))
 
-    return val, mult
+    if mult:
+        val *= 10 ** multipliers[mult]
+
+    return val
 
 
 def _calc_pow(n):
@@ -113,9 +116,7 @@ def tolerance(tol):
 
 
 def value_to_colors(s):
-    val, mult = _parse_v2c(s)
-    if mult:
-        val *= 10 ** multipliers[mult]
+    val = _parse_v2c(s)
 
     decimals = math.fmod(val, 1)
     if val < 10 or (val < 100 and decimals > 0):
@@ -123,7 +124,7 @@ def value_to_colors(s):
             zeros = -1
         else:
             zeros = 0
-            for i in range(2):
+            for _ in range(2):
                 if math.fmod(val, 1) == 0:
                     break
                 zeros -= 1
@@ -131,7 +132,7 @@ def value_to_colors(s):
 
         strval = str(int(val))
         if val < 10:
-            digits = "{}{}".format(strval, "0" * (2 - len(strval)))
+            digits = "{}0".format(strval)
         else:
             digits = strval
     else:
