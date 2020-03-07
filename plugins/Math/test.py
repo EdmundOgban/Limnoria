@@ -170,9 +170,6 @@ class MathTestCase(PluginTestCase):
         self.assertResponse('convert amu to atomic mass unit',
                             '1')
         self.assertResponse('convert [calc 2*pi] rad to circle', '1')
-
-
-
         self.assertError('convert 1 meatball to bananas')
         self.assertError('convert 1 gram to meatballs')
         self.assertError('convert 1 mol to grams')
@@ -200,6 +197,81 @@ class MathTestCase(PluginTestCase):
         self.assertResponse('calc abs(2.0)', '2')
         self.assertResponse('calc abs(-2.0)', '2')
 
+    def testV2cFourbands(self):
+        self.assertResponse("resbands 4", "4Ω, 4-Band resistor: Yellow Black Gold")
+        self.assertResponse("resbands 4.2", "4.2Ω, 4-Band resistor: Yellow Red Gold")
+        self.assertResponse("resbands 42", "42Ω, 4-Band resistor: Yellow Red Black")
+        self.assertResponse("resbands 420.5", "420Ω, 4-Band resistor: Yellow Red Brown")
+
+    def testV2cFivebands(self):
+        self.assertResponse("resbands 4.25", "4.25Ω, 5-Band resistor: Yellow Red Green Silver")
+        self.assertResponse("resbands 42.5", "42.5Ω, 5-Band resistor: Yellow Red Green Gold")
+        self.assertResponse("resbands 425", "425Ω, 5-Band resistor: Yellow Red Green Black")
+        self.assertResponse("resbands 4250", "4.25kΩ, 5-Band resistor: Yellow Red Green Brown")
+
+    def testV2cMultiples(self):
+        self.assertResponse("resbands 420k", "420kΩ, 4-Band resistor: Yellow Red Yellow")
+        self.assertResponse("resbands 420M", "420MΩ, 4-Band resistor: Yellow Red Violet")
+        self.assertResponse("resbands 99G", "99GΩ, 4-Band resistor: White White White")
+
+    def testParsing(self):
+        suffixes = ["ohm", "ohms", " ohm", "  ohm", "   ohm"]
+        for suffix in suffixes:
+            self.assertResponse("resbands 4{}".format(suffix),
+                "4Ω, 4-Band resistor: Yellow Black Gold")
+
+        suffixes = ["kohm", "kohms", "k ohm", " k ohm", " k ohms", "  k ohms", "  k  ohms"]
+        for suffix in suffixes:
+            self.assertResponse("resbands 4{}".format(suffix),
+                "4kΩ, 4-Band resistor: Yellow Black Red")
+
+    def testIdempotence(self):
+        self.assertResponse("resbands 4200", self.getMsg("resbands 4.2k").args[1])
+        self.assertResponse("resbands 4200000", self.getMsg("resbands 4.2M").args[1])
+        self.assertResponse("resbands 4200k", self.getMsg("resbands 4.2M").args[1])
+        self.assertResponse("resbands 4200000000", self.getMsg("resbands 4.2G").args[1])
+        self.assertResponse("resbands 4200M", self.getMsg("resbands 4.2G").args[1])
+
+    def testIdentity(self):
+        self.assertResponse("resbands 04", self.getMsg("resbands 4.0").args[1])
+        self.assertResponse("resbands 04.2", self.getMsg("resbands 4.2").args[1])
+        self.assertResponse("resbands 4,2", self.getMsg("resbands 4.2").args[1])
+        self.assertResponse("resbands 4.20", self.getMsg("resbands 4.2").args[1])
+        self.assertResponse("resbands 42.0", self.getMsg("resbands 42").args[1])
+
+    def testV2cExceptions(self):
+        self.assertError("resbands 4.2.2")
+        self.assertError("resbands 4foo2bar")
+        self.assertError("resbands 100G")
+
+    def testC2vFourbands(self):
+        self.assertResponse("resbands Yellow Black Gold", "Yellow Black Gold, 4-Band resistor: 4Ω")
+        self.assertResponse("resbands Yellow Red Gold", "Yellow Red Gold, 4-Band resistor: 4.2Ω")
+        self.assertResponse("resbands Yellow Red Black", "Yellow Red Black, 4-Band resistor: 42Ω")
+        self.assertResponse("resbands Yellow Red Brown", "Yellow Red Brown, 4-Band resistor: 420Ω")
+
+    def testC2vivebands(self):
+        self.assertResponse("resbands Yellow Red Green Silver", "Yellow Red Green Silver, 5-Band resistor: 4.25Ω")
+        self.assertResponse("resbands Yellow Red Green Gold", "Yellow Red Green Gold, 5-Band resistor: 42.5Ω")
+        self.assertResponse("resbands Yellow Red Green Black", "Yellow Red Green Black, 5-Band resistor: 425Ω")
+        self.assertResponse("resbands Yellow Red Green Brown", "Yellow Red Green Brown, 5-Band resistor: 4.25kΩ")
+
+    def testC2vMultiples(self):
+        self.assertResponse("resbands Yellow Red Yellow", "Yellow Red Yellow, 4-Band resistor: 420kΩ")
+        self.assertResponse("resbands Yellow Red Violet", "Yellow Red Violet, 4-Band resistor: 420MΩ")
+        self.assertResponse("resbands White White White", "White White White, 4-Band resistor: 99GΩ")
+
+    def testC2vExceptions(self):
+        self.assertError("resbands Yellow Red Foo")
+
+    def testTolerances(self):
+        self.assertResponse("restol Silver", "color: Silver, resistor tolerance: 10%")
+        self.assertResponse("restol Green", "color: Green, resistor tolerance: 0.5%")
+        self.assertResponse("restol Grey", "color: Grey, resistor tolerance: 0.05%")
+    
+    def testRestolExceptions(self):
+        invalid_tolerances = ("Black", "Yellow", "White", "Orange", "Foo")
+        for tol in invalid_tolerances:
+            self.assertError("restol {}".format(tol))
 
 # vim:set shiftwidth=4 softtabstop=4 expandtab textwidth=79:
-
