@@ -35,3 +35,4 @@ logs/
 # Intellij PyCharm / IDEA related files
 *.iml
 .idea
+*credentials*

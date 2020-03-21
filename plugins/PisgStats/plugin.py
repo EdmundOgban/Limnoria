@@ -34,6 +34,8 @@ import supybot.callbacks as callbacks
 import supybot.schedule as schedule
 import supybot.world as world
 
+from . import ftp_credentials
+
 import os.path
 import subprocess
 import re
@@ -48,7 +50,6 @@ STATS_PATH = '/stats'
 STATS_URL = 'http://{}{}/%s.html'.format(BASE_URL, STATS_PATH)
 STATS_DELAY = 3600 # in seconds
 
-credentials = dict(userid='SoooN', password='voscor58')
 
 class StatsGeneratorAndUploader(object):
     def __init__(self, event_name, active_stats):
@@ -76,7 +77,7 @@ class StatsGeneratorAndUploader(object):
         ftp.close()
 
     def _generate(self):
-        # Fucking PISG creates statistics in the current directory, so
+        # Freaking PISG creates statistics in the current directory, so
         # we have to do something to create the files where we want.
         world.flush()
         olddir = os.getcwd()
@@ -97,7 +98,7 @@ class PisgStats(callbacks.Plugin):
         self.active_stats = self._parse_active()
         self.generator = StatsGeneratorAndUploader(self.event_name,
                                                    self.active_stats)
-        #self._schedule()
+        self._schedule()
 
     def _parse_active(self):
         L = []
