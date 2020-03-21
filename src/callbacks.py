@@ -48,6 +48,11 @@ from .utils.iter import any, all
 from .i18n import PluginInternationalization
 _ = PluginInternationalization()
 
+if minisix.PY2:
+    builtins = __builtins__
+else:
+    import builtins
+
 def _addressed(nick, msg, prefixChars=None, nicks=None,
               prefixStrings=None, whenAddressedByNick=None,
               whenAddressedByNickAtEnd=None):
@@ -899,6 +904,12 @@ class NestedCommandsIrcProxy(ReplyIrcProxy):
         self.noLengthCheck=noLengthCheck or self.noLengthCheck or self.action
         if not isinstance(s, minisix.string_types): # avoid trying to str() unicode
             s = str(s) # Allow non-string esses.
+
+        bot_prefixes = conf.get(conf.supybot.abuse.botPrefixes)
+        escape_bot_cmds = conf.get(conf.supybot.abuse.escapeOtherBots)
+        if builtins.any(s.startswith(prefix) for prefix in bot_prefixes.split(" ")):
+            s = "\x02\x02{}".format(s)
+
         if self.finalEvaled:
             try:
                 if isinstance(self.irc, self.__class__):
@@ -943,7 +954,7 @@ class NestedCommandsIrcProxy(ReplyIrcProxy):
                                     maximumLength, len(s))
                         s = s[:maximumLength]
                     s_size = len(s.encode()) if minisix.PY3 else len(s)
-                    if s_size <= allowedLength or \
+                    if s_size <= allowedLength and "\n" not in s or \
                        not conf.get(conf.supybot.reply.mores,
                             channel=target, network=self.irc.network):
                         # There's no need for action=self.action here because
@@ -960,7 +971,17 @@ class NestedCommandsIrcProxy(ReplyIrcProxy):
                     # The '(XX more messages)' may have not the same
                     # length in the current locale
                     allowedLength -= len(_('(XX more messages)')) + 1 # bold
-                    msgs = ircutils.wrap(s, allowedLength)
+                    
+                    lines = s.split("\n")
+                    suppressed = max(len(lines) - maximumMores, 0)
+                    lfsep = [t.strip() for t in lines[:maximumMores]]                   
+                    if max(len(t) for t in lfsep) > allowedLength or len(lfsep) == 1:
+                        if "\n" in s:
+                            s = repr(s)
+                        msgs = ircutils.wrap(s, allowedLength)
+                    else:
+                        msgs = lfsep
+
                     msgs.reverse()
                     instant = conf.get(conf.supybot.reply.mores.instant,
                         channel=target, network=self.irc.network)
@@ -986,6 +1007,9 @@ class NestedCommandsIrcProxy(ReplyIrcProxy):
                             more = _('more message')
                         else:
                             more = _('more messages')
+                        if suppressed > 0:
+                            more += ", {} suppressed".format(suppressed)
+
                         n = ircutils.bold('(%i %s)' % (len(msgs), more))
                         response = '%s %s' % (response, n)
                     prefix = msg.prefix

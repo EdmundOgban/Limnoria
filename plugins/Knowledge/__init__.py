@@ -1,6 +1,5 @@
 ###
-# Copyright (c) 2002-2005, Jeremiah Fincher
-# Copyright (c) 2008, James McCoy
+# Copyright (c) 2020, Edmund\
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -26,28 +25,49 @@
 # CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
 # ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 # POSSIBILITY OF SUCH DAMAGE.
+
 ###
 
-from supybot.test import *
-import supybot.conf as conf
+"""
+Knowledge: Knowledge Brings Fear
+"""
 
-import supybot.irclib as irclib
-import supybot.plugins as plugins
+import sys
+import supybot
+from supybot import world
 
-class PluginsTestCase(SupyTestCase):
-    def testMakeChannelFilename(self):
-        self.assertEqual(
-            plugins.makeChannelFilename('dir', 'foo'),
-            conf.supybot.directories.data() + '/foo/dir')
-        self.assertEqual(
-            plugins.makeChannelFilename('dir', '#'),
-            conf.supybot.directories.data() + '/#/dir')
-        self.assertEqual(
-            plugins.makeChannelFilename('dir', 'f/../oo'),
-            conf.supybot.directories.data() + '/f..oo/dir')
-        self.assertEqual(
-            plugins.makeChannelFilename('dir', '/./'),
-            conf.supybot.directories.data() + '/_/dir')
-        self.assertEqual(
-            plugins.makeChannelFilename('dir', '/../'),
-            conf.supybot.directories.data() + '/__/dir')
+# Use this for the version of this plugin.
+__version__ = ""
+
+# XXX Replace this with an appropriate author or supybot.Author instance.
+__author__ = supybot.authors.unknown
+
+# This is a dictionary mapping supybot.Author instances to lists of
+# contributions.
+__contributors__ = {}
+
+# This is a url where the most recent plugin package can be downloaded.
+__url__ = ''
+
+from . import config
+from . import plugin
+from . import unitydoc
+if sys.version_info >= (3, 4):
+    from importlib import reload
+else:
+    from imp import reload
+# In case we're being reloaded.
+reload(config)
+reload(unitydoc)
+reload(plugin)
+# Add more reloads here if you add third-party modules and want them to be
+# reloaded when this plugin is reloaded.  Don't forget to import them as well!
+
+if world.testing:
+    from . import test
+
+Class = plugin.Class
+configure = config.configure
+
+
+# vim:set shiftwidth=4 tabstop=4 expandtab textwidth=79:

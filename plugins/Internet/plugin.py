@@ -35,6 +35,7 @@ import telnetlib
 import re
 import urllib.request
 import urllib.error
+import urllib.parse as urlparse
 import html
 from bs4 import BeautifulSoup as BS, SoupStrainer
 
@@ -280,16 +281,24 @@ class Internet(callbacks.Plugin):
     @staticmethod
     def _read_chunked(urlh, chunksize=8192):
         buf = b''
-
+        tries = 0
         while True:
+            if chunksize * tries > 2 ** 23: # 1 Meg
+                break
+
             data = urlh.read(chunksize)
             if data == b'':
                 break
-            buf += data
 
+            buf += data
+            tries += 1
             yield buf
 
     def _title(self, url):
+        L = list(urlparse.urlsplit(url))
+        L[1] = L[1].encode('idna').decode('ascii')
+        url = urlparse.urlunsplit(L)
+
         urlh = self._urlget(url, override_ua=False)
         info = urlh.info()
         if info.get_content_type() not in self._supported_content:
@@ -302,7 +311,7 @@ class Internet(callbacks.Plugin):
         #    return "Title (%s): %s" % (utils.str.shorten(url), title_text)
 
         for webpage in self._read_chunked(urlh):
-            mtch = re.search(b"<title>(.+)</title>", webpage, re.DOTALL)
+            mtch = re.search(b"<title>(.+)</title>", webpage, re.DOTALL | re.I)
             if mtch:
                 try:
                     charset = info.get_charsets()[0] or "utf8"
@@ -332,12 +341,20 @@ class Internet(callbacks.Plugin):
             irc.reply(title)
 
     def _tweet(self, url):
+        # Replace *.twitter.com with twitter.com
+        urlsplt = list(urlparse.urlsplit(url))
+        urlsplt[1] = "twitter.com"
+        url = urlparse.urlunsplit(urlsplt)
+
         soup = BS(self._urlget(url, override_ua=False))
         header = soup.find("div", {"class": "permalink-header"})
         try:
-            name = header.find("span", {"class": "FullNameGroup"}).text.strip()
+            nm = header.find("span", {"class": "FullNameGroup"})
         except AttributeError:
             name = None
+        else:
+            verified = bool(nm.find("span", {"class": "Icon--verified"}))
+            name = "{}{}".format(nm.strong.text.strip(), " \u2713" if verified else "")
 
         try:
             account = header.find("span", {"class": "username"}).text.strip()
@@ -362,6 +379,18 @@ class Internet(callbacks.Plugin):
 
             return name, account, "".join(content)
 
+    def _tweet_format(self, name, account, tweet):
+        tweet = re.sub(r"\n+", " | ", tweet)
+            
+        if name is None and account is None:
+            s = "Tweet ({}): {}".format(utils.str.shorten(url, 50), tweet)
+        elif name is None or account is None:
+            s = "Tweeted by {}: {}".format(name or account, tweet)
+        else:
+            s = "Tweeted by {} ({}): {}".format(name, account, tweet)
+
+        return s
+
     @wrap(['channeldb', optional('text')])
     def tweet(self, irc, msg, args, channel, address):
         """ [url] """
@@ -370,18 +399,10 @@ class Internet(callbacks.Plugin):
         if url is None:
             return
 
-        res = self._tweet(url.replace("mobile.twitter", "twitter"))
+        res = self._tweet(url)
         if res:
-            name, account, tweet = res
-            tweet = re.sub(r"\n+", " | ", tweet)
-            if name is None and account is None:
-                s = "Tweet ({}): {}".format(utils.str.shorten(url, 50), tweet)
-            elif name is None or account is None:
-                s = "Tweeted by {}: {}".format(name or account, tweet)
-            else:
-                s = "Tweeted by {} ({}): {}".format(name, account, tweet)
+            irc.reply(self._tweet_format(*res))
 
-            irc.reply(s)
 
     @wrap(['channeldb'])
     def lasturl(self, irc, msg, args, channel):
@@ -438,19 +459,25 @@ class Internet(callbacks.Plugin):
 
     def _autotitle_snarf(self, irc, msg, text):
         channel = plugins.getChannel(msg.args[0])
+        splitresult = self._snarfUrl(irc.network, channel, text)
         botNicks = self.registryValue("botNames", channel).split()
         if supyany(msg.nick.startswith, botNicks):
             return
 
-        splitresult = self._snarfUrl(irc.network, channel, text)
-        if splitresult and self.registryValue("ytAutoTitle", channel):
-            title = None
+        if splitresult:
+            text = None
             url, urlsplt = splitresult
             isYtUrl = urlsplt.netloc in ("www.youtube.com", "youtube.com", "youtu.be")
-            if (urlsplt.path.lstrip("/") or urlsplt.query) and isYtUrl:
-                title = self._title(url)
+            isTweetUrl = urlsplt.netloc.endswith("twitter.com")
+            if urlsplt.path.lstrip("/") or urlsplt.query:
+                if isYtUrl and self.registryValue("ytAutoTitle", channel):
+                    text = self._title(url)
+                elif isTweetUrl: # and self.registryValue("autoTweet", channel):
+                    res = self._tweet(url)
+                    if res:
+                        text = self._tweet_format(*res)
 
-            return title
+            return text
 
     # This is needed in case of a message containing an HTTP link which starts with
     # someone's nick that incidentally begins with the selected bot commands prefix.

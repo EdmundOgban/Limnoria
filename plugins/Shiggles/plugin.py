@@ -52,6 +52,11 @@ class Shiggles(callbacks.Plugin):
         """ [dest] <message> """
         irc.reply(message, to=dest)
 
+    @wrap(['text'])
+    def act(self, irc, msg, args, message):
+        """ <message> """
+        irc.reply(message, action=True)
+
     def ifelse(self, irc, msg, args, text):
         """ 'conda' [eq|neq] 'condb' 'if-true' 'if-false' """
         m = re.match(r"^'([^']*)'\s([a-z]+)\s'([^']*)'\s'([^']*)'\s'([^']*)'$", text)
@@ -70,7 +75,6 @@ class Shiggles(callbacks.Plugin):
             irc.error("invalid parameters.")
     ifelse = wrap(ifelse, ['text'])
 
-
     @wrap([optional('somethingWithoutSpaces')])
     def fu(self, irc, msg, args, f):
         " [F]: ffffuuuuuu-"
@@ -80,6 +84,27 @@ class Shiggles(callbacks.Plugin):
             s = s.upper()
 
         irc.reply(s)
+
+    def greetz(self, irc, msg, args, opt, text):
+        """ Greets someone """
+        #opt = dict(opt)
+        #dst = opt['dst'] if 'dst' in opt else None
+        dst = None
+        if text:
+            text = text.split()
+            r = '%s ' % text[0][:30]
+        else:
+            r = ''
+        r += '%s' % (''.join(('ò' if randint(0, 1) else '\\') for i in range(randint(2, 15))))
+        if dst: irc.reply(r, to=dst, private=True)
+        else: irc.reply(r)
+    greetz = wrap(greetz, [optional(getopts({'dst': 'something'})), optional('text')])
+
+    @wrap(['text'])
+    def klindize(self, irc, msg, args, text):
+        """ <text> """
+        from random import random
+        irc.reply(''.join(c if random() > 0.3 or c == ' ' else '\ufffd' for c in text))
 
     def doPrivmsg(self, irc, msg):
         if not callbacks.addressed(irc.nick, msg):

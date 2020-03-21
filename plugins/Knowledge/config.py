@@ -1,6 +1,5 @@
 ###
-# Copyright (c) 2002-2005, Jeremiah Fincher
-# Copyright (c) 2008, James McCoy
+# Copyright (c) 2020, Edmund\
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -26,28 +25,32 @@
 # CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
 # ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 # POSSIBILITY OF SUCH DAMAGE.
+
 ###
 
-from supybot.test import *
-import supybot.conf as conf
+from supybot import conf, registry
+try:
+    from supybot.i18n import PluginInternationalization
+    _ = PluginInternationalization('Knowledge')
+except:
+    # Placeholder that allows to run the plugin on a bot
+    # without the i18n module
+    _ = lambda x: x
 
-import supybot.irclib as irclib
-import supybot.plugins as plugins
 
-class PluginsTestCase(SupyTestCase):
-    def testMakeChannelFilename(self):
-        self.assertEqual(
-            plugins.makeChannelFilename('dir', 'foo'),
-            conf.supybot.directories.data() + '/foo/dir')
-        self.assertEqual(
-            plugins.makeChannelFilename('dir', '#'),
-            conf.supybot.directories.data() + '/#/dir')
-        self.assertEqual(
-            plugins.makeChannelFilename('dir', 'f/../oo'),
-            conf.supybot.directories.data() + '/f..oo/dir')
-        self.assertEqual(
-            plugins.makeChannelFilename('dir', '/./'),
-            conf.supybot.directories.data() + '/_/dir')
-        self.assertEqual(
-            plugins.makeChannelFilename('dir', '/../'),
-            conf.supybot.directories.data() + '/__/dir')
+def configure(advanced):
+    # This will be called by supybot to configure this module.  advanced is
+    # a bool that specifies whether the user identified themself as an advanced
+    # user or not.  You should effect your configuration by manipulating the
+    # registry as appropriate.
+    from supybot.questions import expect, anything, something, yn
+    conf.registerPlugin('Knowledge', True)
+
+
+Knowledge = conf.registerPlugin('Knowledge')
+# This is where your configuration variables (if any) should go.  For example:
+# conf.registerGlobalValue(Knowledge, 'someConfigVariableName',
+#     registry.Boolean(False, _("""Help for someConfigVariableName.""")))
+
+
+# vim:set shiftwidth=4 tabstop=4 expandtab textwidth=79:

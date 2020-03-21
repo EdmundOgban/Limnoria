@@ -27,9 +27,14 @@ def tr(from_lang, to_lang, *, q):
     data = requests.get(url, headers=hdrs).json()
     from_lang = data[2]
     tr_data = data[5]
-    if tr_data is None:
+    if tr_data is None or len(tr_data) == 0:
         translations = [q]
+    elif len(tr_data) == 1:
+        tr_sentence = [tr[2] for tr in tr_data][0]
+        translations = [tr[0] for tr in tr_sentence]
+        #translations = [tr[0] for tr in tr_data[0][2]]
     else:
-        translations = [tr[0] for tr in tr_data[0][2]]
+        tr_sentences =  [tr[2] for tr in tr_data]
+        translations = [' '.join(tr[0][0] for tr in tr_sentences)]
 
     return from_lang, to_lang, translations

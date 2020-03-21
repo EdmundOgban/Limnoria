@@ -56,8 +56,17 @@ class String(callbacks.Plugin):
 
         Returns the 8-bit value[s] of <text>.
         """
-        s = " ".join("'{}'={}".format(c, str(ord(c))) for c in text)
-        irc.reply(s)
+        L = []
+        for c in text:
+            if ord(c) < 32:
+                a = repr(c)
+            else:
+                a = c
+
+            b = str(ord(c))
+            L.append("{}={}".format(a, b))
+
+        irc.reply(" ".join(L))
 
     @internationalizeDocstring
     @wrap(['text'])
@@ -66,8 +75,15 @@ class String(callbacks.Plugin):
 
         Returns the character associated with the 8-bit value <number>
         """
-        it = utils.gen.normalizeBase(*text.split(), ensure_byte=True)
-        s = ("{}='{}'".format(utils.gen.baseToLiteral(a, b), chr(n)) for a, n, b in it)
+        s = []
+        for a, n, b in utils.gen.normalizeBase(*text.split(), ensure_byte=True):
+            if n < 32:
+                f = lambda n: repr(chr(n))
+            else:
+                f = chr
+
+            s.append("{}={}".format(utils.gen.baseToLiteral(a, b), f(n)))
+
         irc.reply(" ".join(s))
 
     @internationalizeDocstring

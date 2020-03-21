@@ -1,6 +1,5 @@
 ###
-# Copyright (c) 2002-2005, Jeremiah Fincher
-# Copyright (c) 2008, James McCoy
+# Copyright (c) 2011, Edmund_Ogban
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -26,28 +25,13 @@
 # CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
 # ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 # POSSIBILITY OF SUCH DAMAGE.
+
 ###
 
 from supybot.test import *
-import supybot.conf as conf
 
-import supybot.irclib as irclib
-import supybot.plugins as plugins
+class PisgStatsTestCase(PluginTestCase):
+    plugins = ('PisgStats',)
 
-class PluginsTestCase(SupyTestCase):
-    def testMakeChannelFilename(self):
-        self.assertEqual(
-            plugins.makeChannelFilename('dir', 'foo'),
-            conf.supybot.directories.data() + '/foo/dir')
-        self.assertEqual(
-            plugins.makeChannelFilename('dir', '#'),
-            conf.supybot.directories.data() + '/#/dir')
-        self.assertEqual(
-            plugins.makeChannelFilename('dir', 'f/../oo'),
-            conf.supybot.directories.data() + '/f..oo/dir')
-        self.assertEqual(
-            plugins.makeChannelFilename('dir', '/./'),
-            conf.supybot.directories.data() + '/_/dir')
-        self.assertEqual(
-            plugins.makeChannelFilename('dir', '/../'),
-            conf.supybot.directories.data() + '/__/dir')
+
+# vim:set shiftwidth=4 tabstop=4 expandtab textwidth=79:

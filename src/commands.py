@@ -721,7 +721,7 @@ def getLiteral(irc, msg, args, state, literals, errmsg=None):
         raise callbacks.ArgumentError
 
 def getTo(irc, msg, args, state):
-    if args[0].lower() == 'to':
+    if args[0].lower() in ('in', 'to', 'as'):
         args.pop(0)
 
 def getPlugin(irc, msg, args, state, require=True):

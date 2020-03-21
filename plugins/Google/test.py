@@ -80,6 +80,30 @@ class GoogleTestCase(ChannelPluginTestCase):
             self.assertRegexp('fight supybot moobot', r'.*supybot.*: \d+')
             self.assertNotError('fight ... !')
 
+        def testTranslateParse(self):
+            conf.supybot.plugins.Google.sourceLang.setValue("hr")
+            conf.supybot.plugins.Google.targetLang.setValue("ja")
+            cases = [
+                ("en|it foo bar"      , "Translate en→it (foo bar):"),
+                ("en-it foo bar"      , "Translate en→it (foo bar):"),
+                ("en- foo bar"        , "Translate en→ja (foo bar):"),
+                ("en- it foo bar"     , "Translate en→ja (it foo bar):"),
+                ("en--it foo bar"     , "Translate hr→ja (en--it foo bar)"),
+                ("en -it foo bar"     , "Translate hr→ja (en -it foo bar)"),
+                ("en it foo bar"      , "Translate hr→ja (en it foo bar)"),
+                ("en-itfoo bar baz"   , "Translate hr→ja (en-itfoo bar baz)"),
+                ("-it foo bar"        , "Translate hr→it (foo bar):"),
+                ("zh-CN-it foo bar"   , "Translate zh-CN→it (foo bar):"),
+                ("it-zh-CN foo bar"   , "Translate it→zh-CN (foo bar):"),
+                ("it-zh-CN-en foo"    , "Translate hr→ja (it-zh-CN-en foo):"),
+                ("zh-CN-en-it foo"    , "Translate hr→ja (zh-CN-en-it foo):"),
+                ("- foo bar"          , "Translate hr→ja (- foo bar):"),
+                ("foo bar baz"        , "Translate hr→ja (foo bar baz):"),
+            ]
+            for case, expected in cases:
+                expected = expected.replace("(", "\(").replace(")", "\)")
+                self.assertRegexp("tr {}".format(case), expected)
+
         def testTranslate(self):
             conf.supybot.plugins.Google.sourceLang.setValue("auto")
             conf.supybot.plugins.Google.targetLang.setValue("it")

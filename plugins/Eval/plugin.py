@@ -33,6 +33,7 @@ from supybot.commands import *
 import supybot.plugins as plugins
 import supybot.ircutils as ircutils
 import supybot.irclib as irclib
+import supybot.ircdb as ircdb
 import supybot.callbacks as callbacks
 import supybot.log as log
 import supybot.schedule as schedule
@@ -47,6 +48,7 @@ except ImportError:
 import io
 import code
 import codecs
+import hashlib
 import os
 import sys
 import traceback
@@ -55,11 +57,16 @@ import time
 from datetime import datetime
 import requests.exceptions
 import json
+import re
+
+import Pyro4
 
 from subprocess import Popen, PIPE
 from random import randint, choice
 from bs4 import BeautifulSoup as BS
 from base64 import urlsafe_b64encode, urlsafe_b64decode
+from collections import defaultdict, deque
+from functools import partial
 
 # from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey, X25519PublicKey
 # from cryptography.hazmat.primitives.ciphers.aead import AESGCM
@@ -73,18 +80,74 @@ def decode_authenticated_message(key, authmessage, tag=None, separator='.'):
     plaintext = aesgcm.decrypt(nonce, ct, tag)
     return plaintext
 
+
+def _py_parser(s):
+    if len(s.split()) == 1:
+        return "\n"
+
+    # strip command, preserve leading spaces
+    text = re.sub("^[^\s]+\s", "", s)
+    if text == "\\n":
+        return "\n"
+
+    # replace \\t with an actual \t, only if it's not escaped
+    text = re.sub(r"(?<!\\)\\t", "\t", text)
+    # replace \\n with an actual \n, only if it's at EOL and not escaped
+    text = re.sub(r"(?<!\\)\\n$", "\n", text)
+    if text[-1] in ";:":
+        text += "\n"
+
+    return text
+
+
+class PyCodeExecutor:
+    def __init__(self):
+        self.cons = code.InteractiveConsole()
+
+    def execute(self, code):
+        out = ""
+        err = ""
+        oldout, olderr = sys.stdout, sys.stderr
+        sys.stdout, sys.stderr = io.StringIO(), io.StringIO()
+        try:
+            if self.cons.push(code):
+                out = "..."
+            else:
+                out = sys.stdout.getvalue()
+            err = sys.stderr.getvalue()
+            executed = not (err and not out)
+        finally:
+            sys.stdout, sys.stderr = oldout, olderr
+
+        if executed is False:
+            s = err
+        else:
+            s = out or ">>>"
+
+        return executed, s.strip().split("\n") if s else []
+
+    def clear(self):
+        self.cons = code.InteractiveConsole()
+
 class Eval(callbacks.Plugin):
     """Add the help for "@plugin help Eval" here
     This should describe *how* to use this plugin."""
+    threaded = True
 
     def __init__(self, *args, **kwargs):
         super(Eval, self).__init__(*args, **kwargs)
-        if 'ilbotto_keepalive' in schedule.schedule.events:
-            schedule.removeEvent('ilbotto_keepalive')
+        Pyro4.config.COMMTIMEOUT = 5
+        self.codexec = PyCodeExecutor()
+        self.rpy_governor = Pyro4.Proxy("PYRONAME:org.restrictedpy.governor")
+        self.rpy_governor._pyroAsync()
+        self.pystory = defaultdict(partial(deque, maxlen=128))
 
-        schedule.addPeriodicEvent(
-            lambda: irclib.il_botto('PING', '1'), 3600,
-            'ilbotto_keepalive', now=True)
+        #if 'ilbotto_keepalive' in schedule.schedule.events:
+        #    schedule.removeEvent('ilbotto_keepalive')
+        #
+        #schedule.addPeriodicEvent(
+        #    lambda: irclib.il_botto('PING', '1'), 3600,
+        #    'ilbotto_keepalive', now=True)
 
     def polygen(self, irc, msg, args):
         """ Polygen. """
@@ -178,59 +241,129 @@ class Eval(callbacks.Plugin):
 
     #polygen = wrap(polygen, ['text'])
 
-    cons = code.InteractiveConsole()
-    def clear(self, irc, msg, args):
-        """: instantiates a new InteractiveConsole object. """
-        self.cons = code.InteractiveConsole()
-    clear = wrap(clear, ['owner'])
+    @wrap(['owner', optional('text')])
+    def ppy(self, irc, msg, args, _):
+        """<python code>
+        Evaluates a Python code string using code module. """
+        if not irc.isChannel(msg.args[0]):
+            return
 
-    def py(self, irc, msg, args, text):
-        """ Evaluates a Python code string using code module. """
-        def cformat(s):
-            return s.strip().split('\n')
+        if msg.args[1].startswith(irc.nick):
+            return
 
-        outputted = 0
-        mystdout = io.StringIO()
-        mystderr = io.StringIO()
-        oldstdout = sys.stdout
-        oldstderr = sys.stderr
-        sys.stdout = mystdout
-        sys.stderr = mystderr
-        try:
-            self.cons.push(text+'\n')
-            err = cformat(mystderr.getvalue())[-1]
-            if err:
-                irc.error("%s" % err)
-                return
-            res = cformat(mystdout.getvalue())
-            for s in res:
-                if s:
-                    outputted = 1
-                    irc.reply("%s" % s, prefixNick=False)
-            if not outputted:
+        channel = msg.args[0]
+        text = _py_parser(msg.args[1])
+        executed, result = self.codexec.execute(text)
+        if executed:
+            if not result:
                 irc.reply("No output.")
-        except:
-            irc.reply("%s" % cformat(traceback.format_exc(0))[-1])
-        finally:
-            sys.stdout = oldstdout
-            sys.stderr = oldstderr
-
-    py = wrap(py, ['owner', 'text'])
-
-    def greetz(self, irc, msg, args, opt, text):
-        """ Greets someone """
-        #opt = dict(opt)
-        #dst = opt['dst'] if 'dst' in opt else None
-        dst = None
-        if text:
-            text = text.split()
-            r = '%s ' % text[0][:30]
+            elif len(result) <= 3:
+                for res in result:
+                    irc.reply(res)
+            else:
+                irc.reply(" ".join(result))
         else:
-            r = ''
-        r += '%s' % (''.join(('ò' if randint(0, 1) else '\\') for i in range(randint(2, 15))))
-        if dst: irc.reply(r, to=dst, private=True)
-        else: irc.reply(r)
-    greetz = wrap(greetz, [optional(getopts({'dst': 'something'})), optional('text')])
+            irc.error(result[-1])
+
+    @wrap(['owner'])
+    def pclear(self, irc, msg, args):
+        """: instantiates a new InteractiveConsole object. """
+        self.codexec.clear()
+
+    def py(self, irc, msg, args):
+        """<python code>
+        Evaluates a Python code string using code module (Restricted version). """
+        if not irc.isChannel(msg.args[0]):
+            return
+
+        if msg.args[1].startswith(irc.nick):
+            return
+
+        channel = msg.args[0]
+        text = _py_parser(msg.args[1])
+        areq = None
+        ares = None
+        try:
+            plaintext = '{}@{}'.format(msg.host, irc.network)
+            areq = self.rpy_governor.request(plaintext)
+            self.log.debug("waiting for rpy_governor")
+            if areq.wait(2) is False:
+                irc.error("BAD: request to rpy_governor timed out")
+                return
+
+            self.log.debug("rpy_governor answered")
+            try:
+                uri = areq.value
+            except Exception as e:
+                self.log.info("".join(Pyro4.util.getPyroTraceback()))
+                raise
+
+            rpy_executor = Pyro4.Proxy(uri)
+            self.log.debug("sending execute request")
+            try:
+                executed, result = rpy_executor.execute(text)
+            except Exception as e:
+                self.log.info("".join(Pyro4.util.getPyroTraceback()))
+                raise
+
+            self.log.debug("execute request sent, waiting for async reply")
+        except Pyro4.errors.ConnectionClosedError as e:
+            irc.error("Broken pipe")
+        except Pyro4.errors.TimeoutError:
+            irc.error("Timed out")
+        else:
+            if result:
+                if executed:
+                    if len(result) <= 3:
+                        for res in result:
+                            irc.reply(res)
+                    else:
+                        s = "\n".join(result)
+                        irc.reply(s)
+                else:
+                    s = result[-1]
+                    irc.error(s)
+        finally:
+            self.pystory[channel].append(text)
+            if areq is not None:
+                areq.wait(0)
+
+            if ares is not None:
+                ares.wait(0)
+
+    @wrap(['somethingWithoutSpaces'])
+    def pysnap(self, irc, msg, args, from_nick):
+        """ """
+        users = irc.state.channels[msg.channel].users
+        if from_nick not in users:
+            s = "can't snapshot env of {} because they're not here."
+            irc.error(s.format(from_nick))
+            return
+
+        hostmask = irc.state.nickToHostmask(from_nick)
+        _, hostname = hostmask.rsplit('@', 1)
+        plaintext_from = '{}@{}'.format(hostname, irc.network)
+        plaintext_to = '{}@{}'.format(msg.host, irc.network)
+        self.log.info("interrogating rpy_governor")
+        areq = self.rpy_governor.snapshot(plaintext_from, plaintext_to)
+        self.log.info("waiting for rpy_governor")
+        if areq.wait(2) is False:
+            irc.error("BAD: request to rpy_governor timed out")
+
+        irc.reply(str(areq.value))
+
+    #@wrap(['owner'])
+    #def clear(self, irc, msg, args):
+    #    """: instantiates a new InteractiveConsole object. """
+    #    self.restrictedpy.clear()
+
+    @wrap(['channeldb', 'owner'])
+    def history(self, irc, msg, args, channel):
+        """:
+        py command history"""
+        s = '\n'.join(reversed(self.pystory[channel]))
+        if s:
+            irc.reply(s)
 
     # @wrap([('checkCapability', 'ilbotto'), "somethingWithoutSpaces", "text"])
     # def ilbotto(self, irc, msg, args, cmd, text):
@@ -279,7 +412,6 @@ class Eval(callbacks.Plugin):
                 # datetime.fromtimestamp(payload['iat']).isoformat(),
                 # datetime.fromtimestamp(payload['exp']).isoformat(),
                 # irclib.il_ctoken), private=True)
-
 
 Class = Eval
 

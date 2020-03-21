@@ -90,18 +90,19 @@ class StringTestCase(PluginTestCase):
     def testChr(self):
         for i in range(256):
             c = chr(i)
-            regexp = r'%s|%s' % (re.escape(c), re.escape(repr(c)))
-            self.assertRegexp('chr %s' % i, regexp)
+            if i < 32:
+                c = repr(c)
+
+            self.assertResponse('chr %s' % i, "{}={}".format(i, c))
 
     def testOrd(self):
-        for c in map(chr, range(1, 256)):
-            if c in ("\n", "\r"):
-                continue
+        for c in map(chr, range(256)):
             i = ord(c)
-            self.assertResponse('ord %s' % utils.str.dqrepr(c), "'{}'={}".format(c, str(i)))
+            rc = repr(c) if i < 32 else c
+            self.assertResponse('ord %s' % utils.str.dqrepr(c), "{}={}".format(rc, str(i)))
 
         s = "foo"
-        expected = " ".join("'{}'={}".format(c, ord(c)) for c in s)
+        expected = " ".join("{}={}".format(c, ord(c)) for c in s)
         self.assertResponse('ord {}'.format(s), expected)
 
     def testMd5(self):

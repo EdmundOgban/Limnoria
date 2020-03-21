@@ -117,7 +117,6 @@ def tolerance(tol):
 
 def value_to_colors(s):
     val = _parse_v2c(s)
-
     decimals = math.fmod(val, 1)
     if val < 10 or (val < 100 and decimals > 0):
         if decimals == 0:

@@ -1,6 +1,5 @@
 ###
-# Copyright (c) 2002-2005, Jeremiah Fincher
-# Copyright (c) 2008, James McCoy
+# Copyright (c) 2011, Edmund_Ogban
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -26,28 +25,43 @@
 # CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
 # ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 # POSSIBILITY OF SUCH DAMAGE.
+
 ###
 
-from supybot.test import *
-import supybot.conf as conf
+"""
+Add a description of the plugin (to be presented to the user inside the wizard)
+here.  This should describe *what* the plugin does.
+"""
 
-import supybot.irclib as irclib
-import supybot.plugins as plugins
+import supybot
+import supybot.world as world
+from importlib import reload
 
-class PluginsTestCase(SupyTestCase):
-    def testMakeChannelFilename(self):
-        self.assertEqual(
-            plugins.makeChannelFilename('dir', 'foo'),
-            conf.supybot.directories.data() + '/foo/dir')
-        self.assertEqual(
-            plugins.makeChannelFilename('dir', '#'),
-            conf.supybot.directories.data() + '/#/dir')
-        self.assertEqual(
-            plugins.makeChannelFilename('dir', 'f/../oo'),
-            conf.supybot.directories.data() + '/f..oo/dir')
-        self.assertEqual(
-            plugins.makeChannelFilename('dir', '/./'),
-            conf.supybot.directories.data() + '/_/dir')
-        self.assertEqual(
-            plugins.makeChannelFilename('dir', '/../'),
-            conf.supybot.directories.data() + '/__/dir')
+# Use this for the version of this plugin.  You may wish to put a CVS keyword
+# in here if you're keeping the plugin in CVS or some similar system.
+__version__ = ""
+
+# XXX Replace this with an appropriate author or supybot.Author instance.
+__author__ = supybot.authors.unknown
+
+# This is a dictionary mapping supybot.Author instances to lists of
+# contributions.
+__contributors__ = {}
+
+# This is a url where the most recent plugin package can be downloaded.
+__url__ = '' # 'http://supybot.com/Members/yourname/PisgStats/download'
+
+from . import config
+from . import plugin
+reload(plugin) # In case we're being reloaded.
+# Add more reloads here if you add third-party modules and want them to be
+# reloaded when this plugin is reloaded.  Don't forget to import them as well!
+
+if world.testing:
+    from . import test
+
+Class = plugin.Class
+configure = config.configure
+
+
+# vim:set shiftwidth=4 tabstop=4 expandtab textwidth=79:

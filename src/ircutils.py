@@ -640,9 +640,9 @@ def wrap(s, length, break_on_hyphens = False):
     return processed
 
 def isValidArgument(s):
-    """Returns whether s is strictly a valid argument for an IRC message."""
-
-    return '\r' not in s and '\n' not in s and '\x00' not in s
+    """Returns whether s is strictly a valid argument for an IRC message.
+       Don't worry about the \n, it'll be removed later after splitting. """
+    return '\r' not in s and '\x00' not in s # and '\n' not in s
 
 def safeArgument(s):
     """If s is unsafe for IRC, returns a safe version."""

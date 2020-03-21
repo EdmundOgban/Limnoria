@@ -1,6 +1,5 @@
 ###
-# Copyright (c) 2002-2005, Jeremiah Fincher
-# Copyright (c) 2008, James McCoy
+# Copyright (c) 2020, Edmund\
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -26,28 +25,40 @@
 # CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
 # ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 # POSSIBILITY OF SUCH DAMAGE.
+
 ###
 
-from supybot.test import *
-import supybot.conf as conf
+from supybot import utils, plugins, ircutils, callbacks
+from supybot.commands import *
+try:
+    from supybot.i18n import PluginInternationalization
+    _ = PluginInternationalization('Knowledge')
+except ImportError:
+    # Placeholder that allows to run the plugin on a bot
+    # without the i18n module
+    _ = lambda x: x
 
-import supybot.irclib as irclib
-import supybot.plugins as plugins
+from . import unitydoc
 
-class PluginsTestCase(SupyTestCase):
-    def testMakeChannelFilename(self):
-        self.assertEqual(
-            plugins.makeChannelFilename('dir', 'foo'),
-            conf.supybot.directories.data() + '/foo/dir')
-        self.assertEqual(
-            plugins.makeChannelFilename('dir', '#'),
-            conf.supybot.directories.data() + '/#/dir')
-        self.assertEqual(
-            plugins.makeChannelFilename('dir', 'f/../oo'),
-            conf.supybot.directories.data() + '/f..oo/dir')
-        self.assertEqual(
-            plugins.makeChannelFilename('dir', '/./'),
-            conf.supybot.directories.data() + '/_/dir')
-        self.assertEqual(
-            plugins.makeChannelFilename('dir', '/../'),
-            conf.supybot.directories.data() + '/__/dir')
+
+class Knowledge(callbacks.Plugin):
+    """Knowledge Brings Fear"""
+    threaded = True
+
+    @wrap(["text"])
+    def unity(self, irc, msg, args, text):
+        """ <query>
+        search inside the Unity User Manual."""
+
+        matches = unitydoc.search(text)
+        highest_score, *_ = matches[0]
+        if highest_score < 0.6:
+            irc.reply("Nothing found for '{}'.".format(text))
+        else:
+            results = ("{}: {}".format(path, url) for _, path, url in matches)
+            irc.reply("\n".join(results))
+
+Class = Knowledge
+
+
+# vim:set shiftwidth=4 softtabstop=4 expandtab textwidth=79:

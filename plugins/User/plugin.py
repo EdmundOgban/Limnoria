@@ -435,13 +435,24 @@ class User(callbacks.Plugin):
     capabilities = wrap(capabilities, [first('otherUser', 'user')])
 
     @internationalizeDocstring
-    def identify(self, irc, msg, args, user, password):
+    @wrap(['private', optional('otherUser'), additional('something')])
+    def id(self, irc, msg, args, user, password):
         """<name> <password>
 
         Identifies the user as <name>. This command (and all other
         commands that include a password) must be sent to the bot privately,
         not in a channel.
         """
+        if user is None:
+            try:
+                user = ircdb.users.getUser(msg.nick)
+            except KeyError:
+                # TODO
+                #try:
+                #    user = ircdb.users.getUser(hostmask)
+                #except KeyError:
+                return irc.error(conf.supybot.replies.incorrectAuthentication())
+
         if user.checkPassword(password):
             try:
                 user.addAuth(msg.prefix)
@@ -454,7 +465,6 @@ class User(callbacks.Plugin):
             self.log.warning('Failed identification attempt by %s (password '
                              'did not match for %s).', msg.prefix, user.name)
             irc.error(conf.supybot.replies.incorrectAuthentication())
-    identify = wrap(identify, ['private', 'otherUser', 'something'])
 
     @internationalizeDocstring
     def unidentify(self, irc, msg, args, user):
