@@ -30,7 +30,7 @@
 
 import re
 
-from random import randint
+from random import randint, random, choice
 
 from supybot import utils, plugins, ircutils, callbacks
 from supybot.commands import *
@@ -41,6 +41,8 @@ except ImportError:
     # Placeholder that allows to run the plugin on a bot
     # without the i18n module
     _ = lambda x: x
+
+from . import souffle
 
 
 class Shiggles(callbacks.Plugin):
@@ -57,23 +59,23 @@ class Shiggles(callbacks.Plugin):
         """ <message> """
         irc.reply(message, action=True)
 
-    def ifelse(self, irc, msg, args, text):
-        """ 'conda' [eq|neq] 'condb' 'if-true' 'if-false' """
-        m = re.match(r"^'([^']*)'\s([a-z]+)\s'([^']*)'\s'([^']*)'\s'([^']*)'$", text)
+    # def ifelse(self, irc, msg, args, text):
+        # """ 'conda' [eq|neq] 'condb' 'if-true' 'if-false' """
+        # m = re.match(r"^'([^']*)'\s([a-z]+)\s'([^']*)'\s'([^']*)'\s'([^']*)'$", text)
 
-        if m:
-            cond1, op, cond2, ift, elset = m.groups()
-            if op == "eq":
-                ret = ift if cond1 == cond2 else elset
-            elif op == "neq":
-                ret = ift if cond1 != cond2 else elset
-            else:
-                ret = "invalid operation: %s" % op
+        # if m:
+            # cond1, op, cond2, ift, elset = m.groups()
+            # if op == "eq":
+                # ret = ift if cond1 == cond2 else elset
+            # elif op == "neq":
+                # ret = ift if cond1 != cond2 else elset
+            # else:
+                # ret = "invalid operation: %s" % op
 
-            irc.reply(ret)
-        else:
-            irc.error("invalid parameters.")
-    ifelse = wrap(ifelse, ['text'])
+            # irc.reply(ret)
+        # else:
+            # irc.error("invalid parameters.")
+    # ifelse = wrap(ifelse, ['text'])
 
     @wrap([optional('somethingWithoutSpaces')])
     def fu(self, irc, msg, args, f):
@@ -129,7 +131,20 @@ class Shiggles(callbacks.Plugin):
                     reply = "stocazzo"
                 irc.reply(reply, prefixNick=True)
 
-Class = Shiggles
+    @wrap([optional('text')])
+    def souffle(self, irc, msg, args, text):
+        """ [text]
+        macchettehelpiscy :E
+        """
+        if text is None:
+            out = choice("sesese sesesesesese sesesesesesesesese seseseseessesesse ebbasta".split())
+            if random() <= 0.33:
+                out += " :E"
+        else:
+            out = souffle.macchette(text)
 
+        irc.reply(out)
+
+Class = Shiggles
 
 # vim:set shiftwidth=4 softtabstop=4 expandtab textwidth=79:

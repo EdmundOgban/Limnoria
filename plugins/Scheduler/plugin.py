@@ -28,9 +28,11 @@
 ###
 
 import time
+import re
 import os
 import shutil
 import tempfile
+from datetime import datetime
 
 import supybot.conf as conf
 import supybot.utils as utils
@@ -72,7 +74,7 @@ class Scheduler(callbacks.Plugin):
         for name, event in eventdict.items():
             ircobj = callbacks.ReplyIrcProxy(irc, event['msg'])
             try:
-                if event['type'] == 'single': # non-repeating event
+                if event['type'] in ('single', 'alert'): # non-repeating event
                     n = None
                     if schedule.schedule.counter > int(name):
                         # counter not reset, we're probably reloading the plugin
@@ -80,10 +82,13 @@ class Scheduler(callbacks.Plugin):
                         # plugins can schedule stuff, too.
                         n = int(name)
                     self._add(ircobj, event['msg'],
-                              event['time'], event['command'], n)
+                              event['time'], event['command'],
+                              event['issued_by'], n,
+                              event['type'])
                 elif event['type'] == 'repeat': # repeating event
                     self._repeat(ircobj, event['msg'], name,
-                                 event['time'], event['command'], False)
+                                 event['time'], event['command'],
+                                 event['issued_by'], False)
             except AssertionError as e:
                 if str(e) == 'An event with the same name has already been scheduled.':
                     # we must be reloading the plugin, event is still scheduled
@@ -106,9 +111,15 @@ class Scheduler(callbacks.Plugin):
             self.log.warning('File error: %s', e)
 
     def die(self):
+        # Should I do this?
+        #self._wipe_alerts()
         self._flush()
         world.flushers.remove(self._flush)
         self.__parent.die()
+
+    def _beforeAdd(self, nick):
+        howmany = sum(1 for id, ev in self.events.items() if ev["issued_by"] == nick)
+        return howmany < 10
 
     def _makeCommandFunction(self, irc, msg, command, remove=True):
         """Makes a function suitable for scheduling from command."""
@@ -120,14 +131,15 @@ class Scheduler(callbacks.Plugin):
             self.Proxy(irc.irc, msg, tokens)
         return f
 
-    def _add(self, irc, msg, t, command, name=None):
+    def _add(self, irc, msg, t, command, issued_by, name=None, type="single"):
         f = self._makeCommandFunction(irc, msg, command)
         id = schedule.addEvent(f, t, name)
         f.eventId = id
         self.events[str(id)] = {'command':command,
                                 'msg':msg,
                                 'time':t,
-                                'type':'single'}
+                                'issued_by':issued_by,
+                                'type':type}
         return id
 
     @internationalizeDocstring
@@ -140,8 +152,12 @@ class Scheduler(callbacks.Plugin):
         command was given in (with no prefixed nick, a consequence of using
         echo).  Do pay attention to the quotes in that example.
         """
+        if not self._beforeAdd(msg.nick):
+            irc.error("you've got too many scheduled events.", prefixNick=True)
+            return
+
         t = time.time() + seconds
-        id = self._add(irc, msg, t, command)
+        id = self._add(irc, msg, t, command, msg.nick)
         irc.replySuccess(format(_('Event #%i added.'), id))
     add = wrap(add, ['positiveInt', 'text'])
 
@@ -152,6 +168,11 @@ class Scheduler(callbacks.Plugin):
         Removes the event scheduled with id <id> from the schedule.
         """
         if id in self.events:
+            ev = self.events[id]
+            if ev["issued_by"] != msg.nick:
+                irc.error("event id '{}' does not belong to you.".format(id))
+                return
+
             del self.events[id]
             try:
                 id = int(id)
@@ -166,13 +187,14 @@ class Scheduler(callbacks.Plugin):
             irc.error(_('Invalid event id.'))
     remove = wrap(remove, ['lowered'])
 
-    def _repeat(self, irc, msg, name, seconds, command, now=True):
+    def _repeat(self, irc, msg, name, seconds, command, issued_by, now=True):
         f = self._makeCommandFunction(irc, msg, command, remove=False)
         id = schedule.addPeriodicEvent(f, seconds, name, now)
         assert id == name
         self.events[name] = {'command':command,
                              'msg':msg,
                              'time':seconds,
+                             'issued_by':issued_by,
                              'type':'repeat'}
 
     @internationalizeDocstring
@@ -184,6 +206,10 @@ class Scheduler(callbacks.Plugin):
         thereafter).  <name> is a name by which the command can be
         unscheduled.
         """
+        if not self._beforeAdd(msg.nick):
+            irc.error("you've got too many events scheduled.")
+            return
+
         name = name.lower()
         if name in self.events:
             irc.error(_('There is already an event with that name, please '
@@ -195,11 +221,13 @@ class Scheduler(callbacks.Plugin):
     repeat = wrap(repeat, ['nonInt', 'positiveInt', 'text'])
 
     @internationalizeDocstring
-    def list(self, irc, msg, args):
+    @wrap
+    def listall(self, irc, msg, args):
         """takes no arguments
 
         Lists the currently scheduled events.
         """
+
         L = list(self.events.items())
         if L:
             L.sort()
@@ -208,8 +236,93 @@ class Scheduler(callbacks.Plugin):
             irc.reply(format('%L', L))
         else:
             irc.reply(_('There are currently no scheduled commands.'))
-    list = wrap(list)
 
+    @wrap
+    def list(self, irc, msg, args):
+        """takes no arguments
+
+        Lists only currently scheduled events for yourself.
+        """
+
+        L = list((k, v) for k, v in self.events.items() if v['issued_by'] == msg.nick)
+        if L:
+            L.sort()
+            for (i, (name, command)) in enumerate(L):
+                L[i] = format('%s: %q', name, command['command'])
+            irc.reply(format('%L', L))
+        else:
+            irc.reply(_('You have currently got no scheduled commands.'))
+
+    def listinternal(self, irc, msg, args):
+        """ """
+        internal = schedule.schedule
+        out = []
+        for sched in internal.schedule:
+            time_at = datetime.fromtimestamp(sched[0]).isoformat()
+            out.append("{} at {}".format(sched[1], time_at))
+
+        irc.reply(', '.join(out))
+
+    @wrap(['somethingWithoutSpaces', optional('text')])
+    def countdown(self, irc, msg, args, units, text):
+        """ <howlong> [text]
+        Count down to <howlong>. Optionally replies with [text]."""
+        m = re.match(r'^(?:([.\d]+)h)?(?:([.\d]+)m)?(?:([.\d]+)s?)?$',
+                     units)
+        if not m:
+            irc.error("invalid input: '{}'".format(units))
+            return
+
+        if not self._beforeAdd(msg.nick):
+            irc.error("you've got too many events scheduled.")
+            return
+
+        if units[-1] not in "hms":
+            units += "s"
+
+        attrs = []
+        for val in m.groups():
+            try:            
+                attrs.append(float(val))
+            except ValueError:
+                irc.error("invalid input: '{}'".format(val))
+                return
+            except TypeError:
+                attrs.append(0)
+
+        timeuntil = attrs.pop() + attrs.pop() * 60 + attrs.pop() * 3600
+        if timeuntil > 43200: # 12 Hours
+            irc.error("cannot count up to {} (12 hours max).".format(units))
+            return
+
+        t = time.time() + timeuntil
+        s = text if text else "your {} timer has expired.".format(units)
+        id = self._add(irc, msg, t, "echo {}: {}".format(msg.nick, s), msg.nick, type="alert")
+
+    def _wipe_alerts(self):
+        cnt = 0
+        evs = list(self.events)
+        for sid in evs:
+            desc = self.events[sid]
+            if desc["type"] != "alert":
+                continue
+
+            try:
+                schedule.removeEvent(int(sid))
+                del self.events[sid]
+            except KeyError:
+                pass
+            else:
+                cnt += 1
+
+        return cnt
+
+    @wrap(['owner'])
+    def wipecountdowns(self, irc, msg, args):
+        """
+        Clear all scheduled alerts. """
+        cnt = self._wipe_alerts()
+        irc.reply("Wiped {} scheduled alert{}.".format(cnt, '' if cnt == 1 else 's'))
 
 Class = Scheduler
 

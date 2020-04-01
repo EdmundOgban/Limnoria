@@ -311,7 +311,7 @@ class Internet(callbacks.Plugin):
         #    return "Title (%s): %s" % (utils.str.shorten(url), title_text)
 
         for webpage in self._read_chunked(urlh):
-            mtch = re.search(b"<title>(.+)</title>", webpage, re.DOTALL | re.I)
+            mtch = re.search(b"<title[^>]*>(.+)</title>", webpage, re.DOTALL | re.I)
             if mtch:
                 try:
                     charset = info.get_charsets()[0] or "utf8"

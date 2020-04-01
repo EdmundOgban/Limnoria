@@ -284,8 +284,100 @@ class Eval(callbacks.Plugin):
         areq = None
         ares = None
         try:
-            plaintext = '{}@{}'.format(msg.host, irc.network)
-            areq = self.rpy_governor.request(plaintext)
+            plaintext = 'py:{}@{}'.format(msg.host, irc.network)
+            areq = self.rpy_governor.request('py', plaintext)
+            self.log.debug("waiting for rpy_governor")
+            if areq.wait(2) is False:
+                irc.error("BAD: request to rpy_governor timed out")
+                return
+
+            self.log.debug("rpy_governor answered")
+            try:
+                uri = areq.value
+            except Exception as e:
+                self.log.info("".join(Pyro4.util.getPyroTraceback()))
+                raise
+
+            rpy_executor = Pyro4.Proxy(uri)
+            self.log.debug("sending execute request")
+            try:
+                executed, result = rpy_executor.execute(text)
+            except Exception as e:
+                self.log.info("".join(Pyro4.util.getPyroTraceback()))
+                raise
+
+            self.log.debug("execute request sent, waiting for async reply")
+        except Pyro4.errors.ConnectionClosedError as e:
+            irc.error("Broken pipe")
+        except Pyro4.errors.TimeoutError:
+            irc.error("Timed out")
+        else:
+            if result:
+                if executed:
+                    if len(result) <= 3:
+                        for res in result:
+                            irc.reply(res)
+                    else:
+                        s = "\n".join(result)
+                        irc.reply(s)
+                else:
+                    s = result[-1]
+                    irc.error(s)
+        finally:
+            self.pystory[channel].append(text)
+            if areq is not None:
+                areq.wait(0)
+
+            if ares is not None:
+                ares.wait(0)
+
+    @wrap(['owner', optional('text')])
+    def ppy(self, irc, msg, args, _):
+        """<python code>
+        Evaluates a Python code string using code module. """
+        if not irc.isChannel(msg.args[0]):
+            return
+
+        if msg.args[1].startswith(irc.nick):
+            return
+
+        channel = msg.args[0]
+        text = _py_parser(msg.args[1])
+        executed, result = self.codexec.execute(text)
+        if executed:
+            if not result:
+                irc.reply("No output.")
+            elif len(result) <= 3:
+                for res in result:
+                    irc.reply(res)
+            else:
+                irc.reply(" ".join(result))
+        else:
+            irc.error(result[-1])
+
+    @wrap(['owner'])
+    def pclear(self, irc, msg, args):
+        """: instantiates a new InteractiveConsole object. """
+        self.codexec.clear()
+
+    # Yayks, duplicated code!
+    @wrap(['text'])
+    def sh(self, irc, msg, args, text):
+        """<bash script>
+        :(){ :|: & };: """
+        if not irc.isChannel(msg.args[0]):
+            return
+
+        if msg.args[1].startswith(irc.nick):
+            return
+
+        channel = msg.args[0]
+        text = _py_parser(text)
+        areq = None
+        ares = None
+        try:
+            plaintext = 'sh:{}@{}'.format(msg.host, irc.network)
+            areq = self.rpy_governor.request('sh', plaintext)
             self.log.debug("waiting for rpy_governor")
             if areq.wait(2) is False:
                 irc.error("BAD: request to rpy_governor timed out")
@@ -342,8 +434,8 @@ class Eval(callbacks.Plugin):
 
         hostmask = irc.state.nickToHostmask(from_nick)
         _, hostname = hostmask.rsplit('@', 1)
-        plaintext_from = '{}@{}'.format(hostname, irc.network)
-        plaintext_to = '{}@{}'.format(msg.host, irc.network)
+        plaintext_from = 'py:{}@{}'.format(hostname, irc.network)
+        plaintext_to = 'py:{}@{}'.format(msg.host, irc.network)
         self.log.info("interrogating rpy_governor")
         areq = self.rpy_governor.snapshot(plaintext_from, plaintext_to)
         self.log.info("waiting for rpy_governor")

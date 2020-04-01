@@ -37,6 +37,7 @@ import supybot.ircutils as ircutils
 import supybot.schedule as schedule
 import supybot.callbacks as callbacks
 import supybot.log as log
+import supybot.utils as utils
 try:
     from supybot.i18n import PluginInternationalization
     _ = PluginInternationalization('Markov')
@@ -47,270 +48,206 @@ except ImportError:
 
 import time
 import queue
-import kyotocabinet
 import random
 import threading
 import traceback
 import os
 import functools
-
 import collections
+import sqlite3
 
-#import mstr_utils
 
+class DBKeyError(Exception):
+    pass
 
-KEY_LENGTH = 2
-
-class KyotoCabinetDB(object):
+class MarkovSqlite:
     def __init__(self, filename):
         self.dbs = ircutils.IrcDict()
-        self._cache = {}
         self.filename = filename
-
-    def close(self):
-        for db in self.dbs.values():
-            db.close()
-
-    def clear_cache(self, channel):
-        if channel in self._cache:
-            del self._cache[channel]
 
     def _getDb(self, channel):
         if channel not in self.dbs:
             filename = plugins.makeChannelFilename(self.filename, channel)
-            db = kyotocabinet.DB()
-            db.open(filename+".kct#dfunit=4", kyotocabinet.DB.OWRITER | kyotocabinet.DB.OCREATE)
+            db = sqlite3.connect(filename, check_same_thread=False)
+            cur = db.cursor()
+            cur.execute('''CREATE TABLE IF NOT EXISTS starters (
+                starter TEXT PRIMARY KEY
+            )''')
+            cur.execute('''CREATE TABLE IF NOT EXISTS follows (
+                key_a TEXT,
+                key_b TEXT,
+                follow TEXT,
+                PRIMARY KEY (key_a, key_b)
+            )''')
             self.dbs[channel] = db
 
         return self.dbs[channel]
 
-    def _combine(self, key):
-        return ' '.join(key)
-
-    def addKey(self, channel, key, follower):
+    def add(self, channel, sentence):
         db = self._getDb(channel)
-        combined = self._combine(key)
-        last = key[-1]
+        cur = db.cursor()
+        sentence = sentence.split(" ")
+        sentence.extend(["\n", "\n"])
+        cur.execute("INSERT OR IGNORE INTO starters (starter) VALUES (?)", (sentence[0],))
+        for a, b, follow in utils.seq.window(sentence, 3):
+            resultset = cur.execute("SELECT follow FROM follows WHERE key_a = ? AND key_b = ?", (a, b))
+            follows = resultset.fetchone()
+            if follows is None:
+                cur.execute("INSERT INTO follows (key_a, key_b, follow) VALUES (?, ?, ?)", (a, b, follow))
+            else:
+                follows = "{} {}".format(follows[0], follow)
+                cur.execute("UPDATE follows SET follow = ? WHERE key_a = ? AND key_b = ?", (follows, a, b))
 
-        if db.check(combined) == -1: # not present
-            db.set(combined, follower)
-        else:
-            db.append(combined, " " + follower)
-        
-        #if follower == "\n":
-        #    if db.check("\n") == -1: # not present
-        #        db.set("\n", last)
-        #    else:
-        #        db.append("\n", " " + last)
+    def get(self, channel, key_a=None, key_b=None):
+        if key_a is None and key_b is not None:
+            raise ValueError("key_a must not be None when key_b is given")
 
-        db.synchronize(True)
-
-    def getNextKey(self, channel, key):
         db = self._getDb(channel)
+        cur = db.cursor()
+        if key_a is None:
+            # start random
+            resultset = cur.execute("SELECT starter FROM starters ORDER BY RANDOM() LIMIT 1")
+            fetch = resultset.fetchone()
+            if fetch is None:
+                raise DBKeyError("DB for {} is empty.".format(channel))
 
-        if channel not in self._cache:
-            self._cache[channel] = {}
+            key_a = fetch[0]
 
-        comb_key = self._combine(key)
-        if comb_key not in self._cache[channel]:
-            res = db.get_str(comb_key)
-            if res is None:
-                raise KeyError("No followers for {} (empty database?)".format(channel))
-            self._cache[channel][comb_key] = res.split(' ')
+        if key_b is None:
+            # start with one specified word
+            resultset = cur.execute("SELECT key_b FROM follows WHERE key_a = ? ORDER BY RANDOM() LIMIT 1", (key_a,))
+            fetch = resultset.fetchone()
+            if fetch is None:
+                raise DBKeyError("Can't start a chain with '{}'.".format(key_a))
 
-        followers = self._cache[channel][comb_key]
-        #follower = mstr_utils.split_and_choose(followers, ' ')
-        #follower = utils.iter.choice(followers.split(' '))
-        follower = utils.iter.choice(followers)
-        key.pop(0)
-        key.append(follower)
-        return (key, follower == '\n')
+            key_b = fetch[0]
+
+        out = [key_a, key_b]
+        while key_b != "\n":
+            resultset = cur.execute("SELECT follow FROM follows WHERE key_a = ? and key_b = ?", (key_a, key_b))
+            fetch = resultset.fetchone()
+            # Chain stuck
+            if fetch is None:
+                raise DBKeyError("No follower for pair ('{}', '{}')".format(key_a, key_b))
+
+            follows = fetch[0]
+            key_a = key_b
+            key_b = random.choice(follows.split(" "))
+            # Chain ended
+            if key_b == "\n":
+                break
+
+            out.append(key_b)
+
+        if out[-1] == "\n":
+            out.pop()
+
+        return out
+
+    def get_filtered(self, channel, key_a=None, key_b=None, *, func=lambda s: s):
+        valid_sentence = False
+        while not valid_sentence:
+            sentence = self.get(channel, key_a, key_b)
+            valid_sentence = func(sentence)
+
+        return sentence
+
+    def close(self):
+        for db in self.dbs.values():
+            db.commit()
+            db.close()
 
     def firsts(self, channel):
         db = self._getDb(channel)
-        firsts_key = " ".join(["\n"]*KEY_LENGTH)
-
-        if db.check(firsts_key) != -1:
-            return len(set(db.get_str(firsts_key).split()))
-        else:
-            return 0
-
-    def lasts(self, channel):
-        db = self._getDb(channel)
-        if db.check("\n") != -1:
-            return len(set(db.get_str('\n').split()))
-        else:
-            return 0
+        cur = db.cursor()
+        resultset = cur.execute("SELECT COUNT(*) FROM starters")
+        fetch = resultset.fetchone()
+        return int(fetch[0])
 
     def keys(self, channel):
-        keys_cnt = self._getDb(channel).count()
-        return keys_cnt-1 if keys_cnt else 0
+        db = self._getDb(channel)
+        cur = db.cursor()
+        resultset = cur.execute("SELECT COUNT(*) FROM follows")
+        fetch = resultset.fetchone()
+        return int(fetch[0])
 
-    def follows(self, channel):
-        class Visitor(kyotocabinet.Visitor):            
-            def __init__(self):
-                super(Visitor, self).__init__()
-                self.follows = 0
-            def visit_full(self, k, v):
-                if k != "\n":
-                    self.follows += v.count(b' ')+1
+    def follows(self, channel, key_a=None, key_b=None):
+        if key_a is None and key_b is not None:
+            raise ValueError("key_a must not be None when key_b is given")
 
         db = self._getDb(channel)
-        visitor = Visitor()
-        return visitor.follows if db.iterate(visitor) else 0
-    
+        cur = db.cursor()
+        follows = 0
+        #query = "SELECT * FROM follows"
+        query = "SELECT SUM(LENGTH(follow)-LENGTH(REPLACE(follow, ' ', ''))) FROM follows"
+        args = []
+        if key_a:
+            query += " WHERE key_a = ?"
+            args.append(key_a)
+
+        if key_b:
+            query += " AND key_b = ?"
+            args.append(key_b)
+
+        resultset = cur.execute(query, args)
+        fetch = resultset.fetchone()
+        if fetch and fetch[0] is not None:
+            follows = fetch[0] + 1
+
+        #for res in cur.execute(query, args):
+        #    follows += res[-1].count(" ") + 1
+        return follows
+
     def dbSize(self, channel):
         filename = plugins.makeChannelFilename(self.filename, channel)
+        return os.stat(filename).st_size
 
-        return os.stat(f"{filename}.kct").st_size
 
+MarkovDB = plugins.DB('Markov', {'sqlite3': MarkovSqlite})
 
-MarkovDB = plugins.DB('Markov', {'anydbm': KyotoCabinetDB})
-mdb = MarkovDB()
-#MarkovDB = KyotoCabinetDB
-
-class MarkovWorkQueue(threading.Thread):
-    def __init__(self, *args, **kwargs):
-        name = 'Thread #%s (MarkovWorkQueue)' % world.threadsSpawned
-        world.threadsSpawned += 1
-        threading.Thread.__init__(self, name=name)
-        #self.db = MarkovDB(*args, **kwargs)
-        self.db = mdb
-        self.q = queue.Queue()
-        self.killed = False
-        self.setDaemon(True)
-        self.start()
-
-    def die(self):
-        self.killed = True
-        self.q.put(None)
-
-    def enqueue(self, f):
-        self.q.put(f)
-
-    def run(self):
-        while not self.killed:
-            f = self.q.get()
-            if f is not None:
-                try:
-                    time.sleep(f.delay)
-                except AttributeError:
-                    pass
-                try:
-                    f(self.db)
-                except Exception:
-                    log.error(traceback.format_exc())
-                    raise
-        self.db.close()
 
 class Markov(callbacks.Plugin):
     """ Markov chains! """
+    threaded = True
 
     def __init__(self, irc):
-        self.q = MarkovWorkQueue()
         self.__parent = super(Markov, self)
         self.__parent.__init__(irc)
-        self.lastSpoke = time.time()
-        self.am = {}
+        self.db = MarkovDB()
 
     def die(self):
-        self.q.die()
+        self.db.close()
         self.__parent.die()
 
-    def _tokenize(self, m):
-        if ircmsgs.isAction(m):
-            return utils.str.try_coding(ircmsgs.unAction(m)).split()
-        elif ircmsgs.isCtcp(m):
-            return []
+    def _markov(self, channel, query=""):
+        tokens = query.split()
+        response = tokens[:-2]
+        key = tokens[-2:]
+
+        chain_length = 0
+        chain_tries = 0
+        min_chain_length = self.registryValue('minChainLength', channel)
+        max_chain_tries = self.registryValue('maxAttempts', channel)
+        res = []
+        longest_chain = []
+        while chain_length < min_chain_length and chain_tries < max_chain_tries:
+            try:
+                res = self.db.get(channel, *key)
+            except DBKeyError as e:
+                return "Error: {}".format(e)
+            else:
+                chain_length = len(res)
+                if chain_length > len(longest_chain):
+                    longest_chain = res
+
+            chain_tries += 1
+
+        if chain_length < min_chain_length:
+            response.extend(longest_chain)
         else:
-            return utils.str.try_coding(m.args[1]).split()
+            response.extend(res)
 
-    #def _tokenize(self, m):
-    #    if ircmsgs.isAction(m):
-    #        return list(utils.str.try_coding(ircmsgs.unAction(m)))
-    #    elif ircmsgs.isCtcp(m):
-    #        return []
-    #    else:
-    #        return list(utils.str.try_coding(m.args[1]))
-
-    def _markov(self, channel, irc, query="", **kwargs):
-        q = queue.Queue(maxsize=KEY_LENGTH)
-        prepend_list = []
-        key = []
-
-        for i in range(KEY_LENGTH):
-            q.put("\n")
-
-        if query:
-            for word in query.split():
-                try:
-                    q.put_nowait(word)
-                except queue.Full:
-                    item = q.get()
-                    if item != "\n":
-                        prepend_list.append(item)
-                    q.put(word)
-
-        for i in range(KEY_LENGTH):
-            key.append(q.get())
-
-        def f(orig_key, prepend_list, db):
-            chain_length = 0
-            chain_tries = 0
-            min_chain_length = self.registryValue('minChainLength', channel)
-            max_chain_tries = self.registryValue('maxAttempts', channel)
-            longest_chain = []
-            
-            while chain_length < min_chain_length and chain_tries < max_chain_tries:
-                response = [token for token in orig_key if token != "\n"]
-                key = orig_key[:]
-
-                finished = False
-                #log.error("while not finished, key:'{}'".format(key))
-                while not finished:
-                    try:
-                        key, finished = db.getNextKey(channel, key)
-                        #log.error("    key:'{}' finished:{}".format(key, finished))
-                    except KeyError as e:
-                        #log.error("    except KeyError")
-                        firsts_key = ["\n"]*KEY_LENGTH
-                        if key == firsts_key:
-                            db.clear_cache(channel)
-                            irc.error(e.args[0])
-                            return
-                        else:
-                            orig_key = firsts_key[:]
-                            prepend_list = []
-                            finished = True
-                    else:
-                        follower = key[-1]
-                        if follower != "\n":
-                            response.append(follower)
-                else:
-                    #chain_length = len("".join(prepend_list + response))
-                    chain_length = len(prepend_list + response)
-                    if chain_length > len(longest_chain):
-                        longest_chain = response
-                    #log.error("  finished, chain_length:{} chain_tries:{}\n".format(chain_length, chain_tries))
-                    if chain_length < min_chain_length:
-                        chain_tries += 1
-                        if chain_tries < max_chain_tries:
-                            continue
-                        else:
-                            response = longest_chain
-
-                    db.clear_cache(channel)
-                    self.lastSpoke = time.time()
-                    irc.reply(" ".join(prepend_list + response),
-                        prefixNick=kwargs['prefixNick'] if 'prefixNick' in kwargs else False)
-
-        f = functools.partial(f, key, prepend_list)
-        try:
-            f.delay = kwargs['replyDelay']
-        except KeyError:
-            f.delay = 0
-
-        return f
+        return " ".join(response)
 
     @wrap(['channeldb', optional('text')])
     def markov(self, irc, msg, args, channel, words):
@@ -321,9 +258,8 @@ class Markov(callbacks.Plugin):
         channel itself). If a sequence of words is specified, that will be used
         as a start and as a guide through the chain.
         """
-        f = self._markov(channel, irc, words or "", prefixNick=False)
-        f(mdb)
-        #self.q.enqueue(f)
+        s = self._markov(channel, words or "")
+        irc.reply(s)
 
     def _parametrize(self, prefix, words):
         if words:
@@ -343,16 +279,16 @@ class Markov(callbacks.Plugin):
         """[words] """
 
         words = self._parametrize("Wikipedia", words)
-        f = self._markov("#python", irc, words, prefixNick=False)
-        self.q.enqueue(f)
+        s = self._markov("#python", words)
+        irc.reply(s)
 
     @wrap([optional('text')])
     def urkov(self, irc, msg, args, words):
         """[words] """
 
         words = self._parametrize("Urban Dictionary", words)
-        f = self._markov("#python", irc, words, prefixNick=False)
-        self.q.enqueue(f)
+        s = self._markov("#python", words)
+        irc.reply(s)
 
     @wrap(['channeldb'])
     def firsts(self, irc, msg, args, channel):
@@ -361,23 +297,8 @@ class Markov(callbacks.Plugin):
         Returns the number of Markov's first links in the database for
         <channel>.
         """
-        def firsts(db):
-            s = 'There are %s firsts in my Markov database for %s.'
-            irc.reply(s % (db.firsts(channel), channel))
-        self.q.enqueue(firsts)
-
-    @wrap(['channeldb'])
-    def lasts(self, irc, msg, args, channel):
-        """[<channel>]
-
-        Returns the number of Markov's last links in the database for
-        <channel>.
-        """
-        def lasts(db):
-            irc.reply(
-                format('There are %i lasts in my Markov database for %s.',
-                       db.lasts(channel), channel))
-        self.q.enqueue(lasts)
+        s = 'There are %s firsts in my Markov database for %s.'
+        irc.reply(s % (self.db.firsts(channel), channel))
 
     @wrap(['channeldb'])
     def keys(self, irc, msg, args, channel):
@@ -386,24 +307,26 @@ class Markov(callbacks.Plugin):
         Returns the number of Markov's chain links in the database for
         <channel>.
         """
-        def keys(db):
-            irc.reply(
-                format('There are %i keys in my Markov database for %s.',
-                       db.keys(channel), channel))
-        self.q.enqueue(keys)
+        irc.reply(
+            format('There are %i keys in my Markov database for %s.',
+                   self.db.keys(channel), channel))
 
-    @wrap(['channeldb'])
-    def follows(self, irc, msg, args, channel):
+    @wrap(['channeldb', optional('somethingWithoutSpaces'), additional('somethingWithoutSpaces')])
+    def follows(self, irc, msg, args, channel, key_a, key_b):
         """[<channel>]
 
         Returns the number of Markov's third links in the database for
         <channel>.
         """
-        def follows(db):
-            irc.reply(
-                format('There are %i follows in my Markov database for %s.',
-                       db.follows(channel), channel))
-        self.q.enqueue(follows)
+        fmt = "There are %i follows{}in my Markov database for %s."
+        if key_a is not None and key_b is not None:
+            fmt = fmt.format(" for pair ('{}', '{}') ".format(key_a, key_b))
+        elif key_a is not None:
+            fmt = fmt.format(" for starter '{}' ".format(key_a))
+        else:
+            fmt = fmt.format(" ")
+
+        irc.reply(format(fmt, self.db.follows(channel, key_a, key_b), channel))
 
     @wrap(['channeldb'])
     def stats(self, irc, msg, args, channel):
@@ -412,12 +335,10 @@ class Markov(callbacks.Plugin):
         Returns all stats (firsts, lasts, keys, follows) for <channel>'s
         Markov database.
         """
-        def stats(db):
-            irc.reply(
-                format('Firsts: %i; Keys: %i; Follows: %i',
-                       db.firsts(channel),
-                       db.keys(channel), db.follows(channel)))
-        self.q.enqueue(stats)
+        irc.reply(
+            format('Firsts: %i; Keys: %i; Follows: %i',
+                   self.db.firsts(channel),
+                   self.db.keys(channel), self.db.follows(channel)))
 
     @wrap(['channeldb'])
     def dbsize(self, irc, msg, args, channel):
@@ -425,77 +346,39 @@ class Markov(callbacks.Plugin):
 
         Returns the database file size on disk
         """
-        def dbsize(db):
-            def convert_size(size):
-                power = 2**10 # 1024
-                n = 0
-                while size > power:
-                    size /=  power
-                    n += 1
-                return "%.1f %sB" % (size, ["", "k", "M", "G", "T"][n])
+        def convert_size(size):
+            power = 2**10 # 1024
+            n = 0
+            while size > power:
+                size /=  power
+                n += 1
+            return "%.1f %sB" % (size, ["", "k", "M", "G", "T"][n])
 
-            irc.reply(
-                format('Markov database for %s is %s in size.' % (
-                    channel, convert_size(db.dbSize(channel)))))
-
-        self.q.enqueue(dbsize)
+        irc.reply(
+            format('Markov database for %s is %s in size.' % (
+                channel, convert_size(self.db.dbSize(channel)))))
     
     def doPrivmsg(self, irc, msg):
+        def _normalize(m):
+            if ircmsgs.isAction(m):
+                return utils.str.try_coding(ircmsgs.unAction(m))
+            elif ircmsgs.isCtcp(m):
+                return ''
+            else:
+                return utils.str.try_coding(m.args[1])
+
         if not irc.isChannel(msg.args[0]):
             return
 
         channel = plugins.getChannel(msg.args[0])
-        now = time.time()
-        throttle = self.registryValue('randomSpeaking.throttleTime',
-                                      channel)
-        prob_from_conf = self.registryValue('randomSpeaking.probability', channel)
-        #delay = self.registryValue('randomSpeaking.maxDelay', channel)
-        irc = callbacks.SimpleProxy(irc, msg)
-
-        words = ['\n']*KEY_LENGTH
-        words.extend(self._tokenize(msg))
-        words.append('\n')
-
+        text = _normalize(msg)
         # This shouldn't happen often (CTCP messages being the possible exception)
-        if not words or len(words) == KEY_LENGTH+1:
+        if not text:
             return
 
-        if self.registryValue('ignoreBotCommands', channel) and \
-                callbacks.addressed(irc.nick, msg):
-            return
-
-        def auto_markov(prefix_nick=False, delay=0):
-            tokens = msg.args[1].split(" ")
-            len_tokens = len(tokens)
-            if len_tokens > KEY_LENGTH:
-                maxidx = random.randint(KEY_LENGTH, len_tokens)
-                words = tokens[maxidx-KEY_LENGTH:maxidx]
-            elif len_tokens == KEY_LENGTH:
-                words = tokens
-            else:
-                words = [tokens[0]]
-
-            return self._markov(channel, irc, " ".join(words),
-                prefixNick=prefix_nick, replyDelay=delay)
-
-        def add_key(db):
-            for *key, follower in utils.seq.window(words, KEY_LENGTH+1):
-                db.addKey(channel, key, follower)
-
-        
-        # register channel activity
-        #activity = am.get_activity_level()
-        #probability = (15.0-activity)/15.0
-
-        # clamp probability
-        #probability = max(min(probability, prob_from_conf), 0)
-
-        #if now > self.lastSpoke + throttle:
-        #    self.lastSpoke = time.time()
-        #    if random.random() <= probability:
-        #        self.q.enqueue(auto_markov(delay=random.randint(3, 5)))
-
-        self.q.enqueue(add_key)
+        if not (self.registryValue('ignoreBotCommands', channel) and
+                callbacks.addressed(irc.nick, msg)):
+            self.db.add(channel, text)
 
 Class = Markov
 

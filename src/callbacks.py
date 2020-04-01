@@ -291,6 +291,11 @@ class Tokenizer(object):
     def __init__(self, brackets='', pipe=False, quotes='"'):
         if brackets:
             self.separators += brackets
+            # TODO: Check that len(brackets) is even
+            #idx = len(brackets) / 2
+            #self.left = brackets[:idx]
+            #self.right = brackets[idx:]
+            idx = len(brackets) / 2
             self.left = brackets[0]
             self.right = brackets[1]
         else:
@@ -971,9 +976,12 @@ class NestedCommandsIrcProxy(ReplyIrcProxy):
                     # The '(XX more messages)' may have not the same
                     # length in the current locale
                     allowedLength -= len(_('(XX more messages)')) + 1 # bold
-                    
                     lines = s.split("\n")
                     suppressed = max(len(lines) - maximumMores, 0)
+                    suppressed_str = ", {} suppressed".format(suppressed)
+                    if suppressed > 0:
+                        allowedLength -= len(suppressed_str)
+
                     lfsep = [t.strip() for t in lines[:maximumMores]]                   
                     if max(len(t) for t in lfsep) > allowedLength or len(lfsep) == 1:
                         if "\n" in s:
@@ -1008,7 +1016,7 @@ class NestedCommandsIrcProxy(ReplyIrcProxy):
                         else:
                             more = _('more messages')
                         if suppressed > 0:
-                            more += ", {} suppressed".format(suppressed)
+                            more += suppressed_str
 
                         n = ircutils.bold('(%i %s)' % (len(msgs), more))
                         response = '%s %s' % (response, n)

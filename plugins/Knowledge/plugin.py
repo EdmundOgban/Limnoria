@@ -38,12 +38,24 @@ except ImportError:
     # without the i18n module
     _ = lambda x: x
 
+import re
+from datetime import datetime, timedelta
+
 from . import unitydoc
+from . import wikipedia
+from collections import namedtuple, deque
+
+Stat = namedtuple("Stat", ["value", "delta"])
+DayStat = namedtuple("DayStat", ["total", "infected", "deaths", "recovered", "date"])
 
 
 class Knowledge(callbacks.Plugin):
     """Knowledge Brings Fear"""
     threaded = True
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.covidit_stats = deque(maxlen=2)
 
     @wrap(["text"])
     def unity(self, irc, msg, args, text):
@@ -57,6 +69,54 @@ class Knowledge(callbacks.Plugin):
         else:
             results = ("{}: {}".format(path, url) for _, path, url in matches)
             irc.reply("\n".join(results))
+
+    @wrap(["text"])
+    def wiki(self, irc, msg, args, query):
+        """ <query>
+            Search on it.wikipedia.org."""
+        lang = "it"
+        s = "Wikipedia ({}): {} - {}"
+        url, title, res = wikipedia.search(query, lang)
+        result = res.split("\n")[0]
+        irc.reply(s.format(title, result, url))
+
+    covidit_re = re.compile("Italy: "
+                            r"Total cases: (\d+).+"
+                            r"Infected: (\d+).+"
+                            r"Deaths: (\d+).+"
+                            r"Recovered: (\d+).+"
+                            r"Date: (.+)$")
+    def doPrivmsg(self, irc, msg):
+        if callbacks.addressed(irc.nick, msg):
+            return
+
+        if msg.nick not in ('Svadilfari', 'Edmund\\'):
+            return
+
+        m = self.covidit_re.match(msg.args[1])
+        if m:
+            *cur_vals, date = m.groups()
+            cur_date = datetime.strptime(date, "%Y-%m-%dT%H:%M:%S")
+            cur_stat = [*([int(val), 1] for val in cur_vals), cur_date]
+            if (len(self.covidit_stats) < 2
+                or cur_date - self.covidit_stats[0][-1] >= timedelta(days=2)):
+                self.covidit_stats.append(cur_stat)
+                if len(self.covidit_stats) == 0:
+                    return
+
+            prev_stat = self.covidit_stats[-2]
+            out = []
+            for prev_val, cur_val in zip(prev_stat, cur_stat[:-1]):
+                delta = cur_val[0] - prev_val[0]                
+                prev_delta = prev_val[1]
+                percent = (delta - prev_delta) / prev_delta * 100
+                cur_val[1] = delta
+                out.extend([delta, '+' if percent > 0 else '', percent])
+
+            out_s = ("Italy: New cases: {} ({}{:.1f}%);"
+                     " Infected: {} ({}{:.1f}%); Deaths: {} ({}{:.1f}%);"
+                     " Recovered: {} ({}{:.1f}%)")
+            irc.reply(out_s.format(*out))
 
 Class = Knowledge
 

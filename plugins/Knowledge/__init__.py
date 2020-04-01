@@ -52,6 +52,7 @@ __url__ = ''
 from . import config
 from . import plugin
 from . import unitydoc
+from . import wikipedia
 if sys.version_info >= (3, 4):
     from importlib import reload
 else:
@@ -59,6 +60,7 @@ else:
 # In case we're being reloaded.
 reload(config)
 reload(unitydoc)
+reload(wikipedia)
 reload(plugin)
 # Add more reloads here if you add third-party modules and want them to be
 # reloaded when this plugin is reloaded.  Don't forget to import them as well!

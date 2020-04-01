@@ -350,13 +350,16 @@ class Misc(callbacks.Plugin):
     version = wrap(thread(version))
 
     @internationalizeDocstring
-    def source(self, irc, msg, args):
-        """takes no arguments
+    @wrap([optional('somethingWithoutSpaces')])
+    def source(self, irc, msg, args, what):
+        """[issues]
 
-        Returns a URL saying where to get Limnoria.
+        Returns a URL saying where to get Sleipnir. Takes \"issues\" as an optional argument.
         """
-        irc.reply(_('My source is at https://github.com/ProgVal/Limnoria'))
-    source = wrap(source)
+        if what == "issues":
+            irc.reply(_('Issue tracker: https://github.com/EdmundOgban/Limnoria/issues'))
+        else:
+            irc.reply(_('My source is at https://github.com/EdmundOgban/Limnoria/tree/Sleipnir_2020-02-26'))
 
     @internationalizeDocstring
     def more(self, irc, msg, args, nick):

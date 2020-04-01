@@ -29,6 +29,7 @@
 ###
 
 import re
+import random
 import sys
 import types
 import codecs
@@ -43,6 +44,7 @@ from supybot.commands import *
 _ = PluginInternationalization('String')
 
 from . import passwdgen
+from . import souffle
 
 import multiprocessing
 

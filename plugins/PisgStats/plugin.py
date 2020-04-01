@@ -34,7 +34,7 @@ import supybot.callbacks as callbacks
 import supybot.schedule as schedule
 import supybot.world as world
 
-from . import ftp_credentials
+from .ftp_credentials import credentials
 
 import os.path
 import subprocess
@@ -98,7 +98,7 @@ class PisgStats(callbacks.Plugin):
         self.active_stats = self._parse_active()
         self.generator = StatsGeneratorAndUploader(self.event_name,
                                                    self.active_stats)
-        self._schedule()
+        #self._schedule()
 
     def _parse_active(self):
         L = []

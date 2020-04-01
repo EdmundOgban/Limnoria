@@ -35,6 +35,7 @@ Shiggles: Shits and giggles
 import sys
 import supybot
 from supybot import world
+from . import souffle
 
 # Use this for the version of this plugin.
 __version__ = ""
@@ -60,6 +61,7 @@ reload(config)
 reload(plugin)
 # Add more reloads here if you add third-party modules and want them to be
 # reloaded when this plugin is reloaded.  Don't forget to import them as well!
+reload(souffle)
 
 if world.testing:
     from . import test

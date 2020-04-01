@@ -28,6 +28,7 @@
 # POSSIBILITY OF SUCH DAMAGE.
 ###
 
+import random
 import re
 import sys
 import json
@@ -346,6 +347,33 @@ class Google(callbacks.PluginRegexp):
         translated = "; ".join(translations)
         irc.reply("Translate %s\N{rightwards arrow}%s (%s): %s"
             % (guessed_sl, tl, shortened, translated))
+
+    def _rndlangs(self):
+        elems = list(tr_langs.langs)
+        elems.remove("auto")
+        path = ["auto"]
+        top = random.randint(3, min(25, len(elems)))
+        for _ in range(top):
+            chosen = random.choice(elems)
+            path.append(chosen)
+            elems.remove(chosen)
+
+        return path
+
+    @wrap(['text'])
+    def randtr(self, irc, msg, args, text):
+        """ <text> """        
+        path = self._rndlangs()
+        sl, _, _ = gtranslate.tr('auto', 'it', q=text)
+        path.append(sl)
+        for idx in range(len(path)-1):
+            sl, tl = path[idx], path[idx+1]
+            self.log.info(">>> Translate {} to {} '{}'".format(sl, tl, text))
+            _, _, text = gtranslate.tr(sl, tl, q=text)
+            text = text[0]
+
+        round_ = 'round' if len(path) == 1 else 'rounds'
+        irc.reply("{} ({} {})".format(text, len(path), round_))
 
     def googleSnarfer(self, irc, msg, match):
         r"^google\s+(.*)$"
