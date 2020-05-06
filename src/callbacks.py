@@ -49,6 +49,12 @@ from .utils.iter import any, all
 from .i18n import PluginInternationalization
 _ = PluginInternationalization()
 
+if minisix.PY2:
+    builtins = __builtins__
+else:
+    import builtins
+
+
 def _addressed(irc, msg, prefixChars=None, nicks=None,
               prefixStrings=None, whenAddressedByNick=None,
               whenAddressedByNickAtEnd=None):
