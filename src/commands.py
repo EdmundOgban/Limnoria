@@ -499,7 +499,6 @@ def getChannel(irc, msg, args, state):
         channel = msg.channel
     else:
         state.log.debug('Raising ArgumentError because there is no channel.')
-        print(msg.channel, msg)
         raise callbacks.ArgumentError
     state.channel = channel
     state.args.append(channel)
@@ -519,7 +518,6 @@ def getChannelDb(irc, msg, args, state, **kwargs):
     try:
         getChannel(irc, msg, args, state, **kwargs)
         channel = channelSpecific.getChannelLink(state.channel)
-        state.channel = channel
         state.args[-1] = channel
     except (callbacks.ArgumentError, IndexError):
         if channelSpecific():
@@ -531,7 +529,6 @@ def getChannelDb(irc, msg, args, state, **kwargs):
             raise
         else:
             channel = channelSpecific.getChannelLink(channel)
-            state.channel = channel
             state.args.append(channel)
 
 def inChannel(irc, msg, args, state):

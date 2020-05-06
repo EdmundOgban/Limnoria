@@ -40,6 +40,7 @@ from . import shlex
 import codecs
 import getopt
 import inspect
+import warnings
 
 from . import (conf, ircdb, irclib, ircmsgs, ircutils, log, registry,
         utils, world)
@@ -48,18 +49,22 @@ from .utils.iter import any, all
 from .i18n import PluginInternationalization
 _ = PluginInternationalization()
 
-if minisix.PY2:
-    builtins = __builtins__
-else:
-    import builtins
-
-def _addressed(nick, msg, prefixChars=None, nicks=None,
+def _addressed(irc, msg, prefixChars=None, nicks=None,
               prefixStrings=None, whenAddressedByNick=None,
               whenAddressedByNickAtEnd=None):
+    if isinstance(irc, str):
+        warnings.warn(
+            "callbacks.addressed's first argument should now be be the Irc "
+            "object instead of the bot's nick.",
+            DeprecationWarning)
+        network = None
+        nick = irc
+    else:
+        network = irc.network
+        nick = irc.nick
     def get(group):
-        if ircutils.isChannel(target):
-            group = group.get(target)
-        return group()
+        v = group.getSpecific(network=network, channel=msg.channel)
+        return v()
     def stripPrefixStrings(payload):
         for prefixString in prefixStrings:
             if payload.startswith(prefixString):
@@ -67,7 +72,8 @@ def _addressed(nick, msg, prefixChars=None, nicks=None,
         return payload
 
     assert msg.command == 'PRIVMSG'
-    (target, payload) = msg.args
+    target = msg.channel or msg.args[0]
+    payload = msg.args[1]
     if not payload:
         return ''
     if prefixChars is None:
@@ -130,7 +136,7 @@ def _addressed(nick, msg, prefixChars=None, nicks=None,
     else:
         return ''
 
-def addressed(nick, msg, **kwargs):
+def addressed(irc, msg, **kwargs):
     """If msg is addressed to 'name', returns the portion after the address.
     Otherwise returns the empty string.
     """
@@ -138,7 +144,7 @@ def addressed(nick, msg, **kwargs):
     if payload is not None:
         return payload
     else:
-        payload = _addressed(nick, msg, **kwargs)
+        payload = _addressed(irc, msg, **kwargs)
         msg.tag('addressed', payload)
         return payload
 
@@ -915,26 +921,25 @@ class NestedCommandsIrcProxy(ReplyIrcProxy):
         if builtins.any(s.startswith(prefix) for prefix in bot_prefixes.split(" ")):
             s = "\x02\x02{}".format(s)
 
+        replyArgs = dict(
+            to=self.to,
+            notice=self.notice,
+            action=self.action,
+            private=self.private,
+            prefixNick=self.prefixNick,
+            stripCtcp=stripCtcp
+        )
         if self.finalEvaled:
             try:
                 if isinstance(self.irc, self.__class__):
                     s = s[:conf.supybot.reply.maximumLength()]
-                    return self.irc.reply(s, to=self.to,
-                                          notice=self.notice,
-                                          action=self.action,
-                                          private=self.private,
-                                          prefixNick=self.prefixNick,
+                    return self.irc.reply(s,
                                           noLengthCheck=self.noLengthCheck,
-                                          stripCtcp=stripCtcp)
+                                          **replyArgs)
                 elif self.noLengthCheck:
                     # noLengthCheck only matters to NestedCommandsIrcProxy, so
                     # it's not used here.  Just in case you were wondering.
-                    m = _makeReply(self, msg, s, to=self.to,
-                                  notice=self.notice,
-                                  action=self.action,
-                                  private=self.private,
-                                  prefixNick=self.prefixNick,
-                                  stripCtcp=stripCtcp)
+                    m = _makeReply(self, msg, s, **replyArgs)
                     sendMsg(m)
                     return m
                 else:
@@ -966,11 +971,7 @@ class NestedCommandsIrcProxy(ReplyIrcProxy):
                         # action implies noLengthCheck, which has already been
                         # handled.  Let's stick an assert in here just in case.
                         assert not self.action
-                        m = _makeReply(self, msg, s, to=self.to,
-                                      notice=self.notice,
-                                      private=self.private,
-                                      prefixNick=self.prefixNick,
-                                      stripCtcp=stripCtcp)
+                        m = _makeReply(self, msg, s, **replyArgs)
                         sendMsg(m)
                         return m
                     # The '(XX more messages)' may have not the same
@@ -996,12 +997,7 @@ class NestedCommandsIrcProxy(ReplyIrcProxy):
                     while instant > 1 and msgs:
                         instant -= 1
                         response = msgs.pop()
-                        m = _makeReply(self, msg, response, to=self.to,
-                                      notice=self.notice,
-                                      private=self.private,
-                                      prefixNick=self.prefixNick,
-                                      stripCtcp=stripCtcp)
-                        sendMsg(m)
+                        sendMsg(response)
                         # XXX We should somehow allow these to be returned, but
                         #     until someone complains, we'll be fine :)  We
                         #     can't return from here, though, for obvious
@@ -1020,6 +1016,7 @@ class NestedCommandsIrcProxy(ReplyIrcProxy):
 
                         n = ircutils.bold('(%i %s)' % (len(msgs), more))
                         response = '%s %s' % (response, n)
+
                     prefix = msg.prefix
                     if self.to and ircutils.isNick(self.to):
                         try:
@@ -1032,14 +1029,8 @@ class NestedCommandsIrcProxy(ReplyIrcProxy):
                     public = bool(self.msg.channel)
                     private = self.private or not public
                     self._mores[msg.nick] = (private, msgs)
-                    m = _makeReply(self, msg, response, to=self.to,
-                                  action=self.action,
-                                  notice=self.notice,
-                                  private=self.private,
-                                  prefixNick=self.prefixNick,
-                                  stripCtcp=stripCtcp)
-                    sendMsg(m)
-                    return m
+                    sendMsg(response)
+                    return response
             finally:
                 self._resetReplyAttributes()
         else:

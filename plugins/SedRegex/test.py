@@ -42,7 +42,7 @@ class SedRegexTestCase(ChannelPluginTestCase):
 
     # getMsg() stalls if no message is ever sent (i.e. if the plugin fails to respond to a request)
     # We should limit the timeout to prevent the tests from taking forever.
-    timeout = 3
+    timeout = 1
 
     def testSimpleReplace(self):
         self.feedMsg('Abcd abcdefgh')
@@ -56,6 +56,10 @@ class SedRegexTestCase(ChannelPluginTestCase):
         self.feedMsg('s/a/e/i')
         m = self.getMsg(' ')
         self.assertIn('eliens', str(m))
+
+    def testIgnoreRegexpWithBadCase(self):
+        self.feedMsg('aliens are invading, help!')
+        self.assertSnarfNoResponse('S/aliens/monsters/')
 
     def testGlobalReplace(self):
         self.feedMsg('AAaa aaAa a b')
@@ -141,7 +145,6 @@ class SedRegexTestCase(ChannelPluginTestCase):
         m = self.getMsg('echo dummy message')
         # XXX: this is a total hack...
         for msg in self.irc.state.history:
-            print("Message in history: %s" % msg, end='')
             self.assertNotIn("cbn't", str(msg))
 
     def testActionReplace(self):
@@ -182,6 +185,36 @@ class SedRegexTestCase(ChannelPluginTestCase):
         self.feedMsg(r"s/A(B|C+)+D/this should abort/")
         m = self.getMsg(' ', timeout=1)
         self.assertIn('timed out', str(m))
+
+    def testMissingTrailingSeparator(self):
+        # Allow the plugin to work if you miss the trailing /
+        self.feedMsg('hello world')
+        self.feedMsg('s/world/everyone')
+        m = self.getMsg(' ')
+        self.assertIn('hello everyone', str(m))
+
+        # Make sure it works if there's a space in the replacement
+        self.feedMsg('hello world')
+        self.feedMsg('s@world@how are you')
+        m = self.getMsg(' ')
+        self.assertIn('hello how are you', str(m))
+
+        # Ditto with a space in the original text
+        self.feedMsg("foo bar @ baz")
+        self.feedMsg('s/bar @/and')
+        m = self.getMsg(' ')
+        self.assertIn('foo and baz', str(m))
+
+    def testIgnoreTextAfterTrailingSeparator(self):
+        # https://github.com/jlu5/SupyPlugins/issues/59
+        self.feedMsg('see you ltaer')
+        self.feedMsg('s/ltaer/later/ this text will be ignored')
+        m = self.getMsg(' ')
+        self.assertIn('see you later', str(m))
+
+        self.feedMsg('s/LTAER/later, bye/i <extra text>')
+        m = self.getMsg(' ')
+        self.assertIn('see you later, bye', str(m))
 
     # TODO: test ignores
 
