@@ -446,6 +446,17 @@ class Google(callbacks.PluginRegexp):
             irc.reply(_('Google\'s phonebook didn\'t come up with anything.'))
     phonebook = wrap(phonebook, ['text'])
 
+    _gautocompleteUrl = 'https://suggestqueries.google.com/complete/search?client=firefox&q=%s'
+    @wrap(['text'])
+    def autocomplete(self, irc, msg, args, text):
+        """ <text> """
+        aut = json.loads(
+            utils.web.getUrl(self._gautocompleteUrl % utils.web.urlquote_plus(text)))[1]
+        if not aut:
+            irc.reply("I could not find any autocompletion for: {}.".format(text))
+        else:
+            irc.reply("Autocomplete <{}>: {}".format(text, ", ".join(aut)))
+
 
 Class = Google
 
