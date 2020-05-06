@@ -58,7 +58,7 @@ class Knowledge(callbacks.Plugin):
         self.covidit_stats = deque(maxlen=2)
 
     @wrap(["text"])
-    def unity(self, irc, msg, args, text):
+    def unityidx(self, irc, msg, args, text):
         """ <query>
         search inside the Unity User Manual."""
 
@@ -69,6 +69,37 @@ class Knowledge(callbacks.Plugin):
         else:
             results = ("{}: {}".format(path, url) for _, path, url in matches)
             irc.reply("\n".join(results))
+
+    def _check_for_google(self, irc):
+        callbacks = {callback.name(): callback for callback in irc.callbacks}
+
+        try:
+            google = callbacks["Google"]
+        except KeyError:
+            raise KeyError("Google plugin is not loaded.")
+        else:
+            return google
+
+    def _gsite(self, irc, msg, site, query):        
+        text = "{} site:{}".format(query.strip("| "), site)
+        google = self._check_for_google(irc)
+        data = google.search(text, msg.channel, irc.network, dict(language="en"))
+        ret = google.formatData(data, bold=True, max=1, onetoone=True)
+        return ret[0]
+
+    @wrap(["text"])
+    def unity(self, irc, msg, args, text):
+        """ <query>
+        search inside the Unity User Manual using Google."""
+        s = self._gsite(irc, msg, "docs.unity3d.com", text)
+        irc.reply(s)
+
+    @wrap(["text"])
+    def meme(self, irc, msg, args, text):
+        """ <query>
+        search on knowyourmeme.com using Google."""
+        s = self._gsite(irc, msg, "knowyourmeme.com/memes", text)
+        irc.reply(s)
 
     @wrap(["text"])
     def wiki(self, irc, msg, args, query):
@@ -101,15 +132,15 @@ class Knowledge(callbacks.Plugin):
             if (len(self.covidit_stats) < 2
                 or cur_date - self.covidit_stats[0][-1] >= timedelta(days=2)):
                 self.covidit_stats.append(cur_stat)
-                if len(self.covidit_stats) == 0:
+                if len(self.covidit_stats) == 1:
                     return
 
             prev_stat = self.covidit_stats[-2]
             out = []
             for prev_val, cur_val in zip(prev_stat, cur_stat[:-1]):
-                delta = cur_val[0] - prev_val[0]                
+                delta = cur_val[0] - prev_val[0]
                 prev_delta = prev_val[1]
-                percent = (delta - prev_delta) / prev_delta * 100
+                percent = (delta - prev_delta) / abs(prev_delta) * 100
                 cur_val[1] = delta
                 out.extend([delta, '+' if percent > 0 else '', percent])
 

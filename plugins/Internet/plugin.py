@@ -69,7 +69,9 @@ class Internet(callbacks.Plugin):
     def _urlget(self, url, *, data=None, override_ua=True):
         req = urllib.request.Request(url)
         if override_ua is True:
-            req.add_header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; WOW64; rv:51.0) Gecko/20100101 Firefox/51.0")
+            req.add_header("User-Agent", "curl/7.70.0")
+            #req.add_header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; WOW64; rv:51.0) Gecko/20100101 Firefox/51.0")
+            #req.add_header("User-Agent", "Lynx/2.8.7rel.1 libwww-FM/2.14 SSL-MM/1.4.1 OpenSSL/1.0.2a")
         
         urlh = urllib.request.urlopen(req, data)
     
@@ -299,7 +301,7 @@ class Internet(callbacks.Plugin):
         L[1] = L[1].encode('idna').decode('ascii')
         url = urlparse.urlunsplit(L)
 
-        urlh = self._urlget(url, override_ua=False)
+        urlh = self._urlget(url, override_ua=True)
         info = urlh.info()
         if info.get_content_type() not in self._supported_content:
             s = "(%s): Content-Type: %s - Content-Length: %s"
@@ -312,13 +314,14 @@ class Internet(callbacks.Plugin):
 
         for webpage in self._read_chunked(urlh):
             mtch = re.search(b"<title[^>]*>(.+)</title>", webpage, re.DOTALL | re.I)
-            if mtch:
+            mtch2 = re.search(b"<meta property=['\"]og:title['\"] content=['\"]([^'\"]+)['\"]", webpage, re.DOTALL | re.I)
+            if mtch or mtch2:
                 try:
                     charset = info.get_charsets()[0] or "utf8"
                 except IndexError:
                     charset = "ascii"
 
-                match_text = mtch.group(1)
+                match_text = (mtch2 or mtch).group(1)
                 title_text = html.unescape(match_text.strip().decode(charset))
                 return "Title (%s): %s" % (utils.str.shorten(url), title_text)
 
@@ -361,20 +364,36 @@ class Internet(callbacks.Plugin):
         except AttributeError:
             account = None
 
-        tweet_text = soup.find("p", {"class": "tweet-text"})
+        permalink_inner = soup.find("div", {"class": "permalink-inner"})
+        tweet_original = bool(permalink_inner.find("p", {"class": "TweetTextSize--jumbo"}))
+        tweet_text = soup.find("p", {"class": "TweetTextSize--jumbo"})
+        # Test cases
+        #https://twitter.com/parcesepulto/status/1243664062300504070
+        #https://twitter.com/LucaCellamare/status/1243682458698223617
+        #https://twitter.com/emmevilla/status/1245463860909346824/photo/1
+        #https://twitter.com/ThingsWork/status/1243648203884388352
         if tweet_text and tweet_text.text != "":
             content = []
+            media_img = soup.find("div", {"class": "AdaptiveMedia-photoContainer"})
+            media_vid = soup.find("div", {"class": "AdaptiveMedia-videoContainer"})
             for child in tweet_text:
                 try:
-                    if "u-hidden" not in child.attrs["class"]:
+                    if "u-hidden" in child.attrs["class"]:
+                        if not media_vid:
+                            prefix = " " if child.text.startswith("http") else " https://"
+                            text = child.text.strip("…\xa0")
+                            content.append(prefix + text)
+                    else:
                         content.append(child.text)
                 except AttributeError:
                     content.append(child)
 
-            media = soup.find("div", {"class": "AdaptiveMedia-container"})
-            if media:
-                imgs = media.findAll("img")
+            if media_img and tweet_original:
+                imgs = media_img.findAll("img")
                 for img in imgs:
+                    if "class" in img.attrs and "avatar" in img["class"]:
+                        continue
+
                     content.extend([" ", img["src"]])
 
             return name, account, "".join(content)

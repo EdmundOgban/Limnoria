@@ -220,6 +220,14 @@ class Scheduler(callbacks.Plugin):
         # irc.replySuccess()
     repeat = wrap(repeat, ['nonInt', 'positiveInt', 'text'])
 
+    def _format_list(self, L):
+        L.sort()
+        for (i, (name, command)) in enumerate(L):
+            time_at = datetime.fromtimestamp(command["time"]-time.time()-3600).strftime("%H:%M:%S")
+            L[i] = format('%s: %q -%s', name, command['command'], time_at)
+
+        return L
+
     @internationalizeDocstring
     @wrap
     def listall(self, irc, msg, args):
@@ -230,10 +238,7 @@ class Scheduler(callbacks.Plugin):
 
         L = list(self.events.items())
         if L:
-            L.sort()
-            for (i, (name, command)) in enumerate(L):
-                L[i] = format('%s: %q', name, command['command'])
-            irc.reply(format('%L', L))
+            irc.reply(format('%L', self._format_list(L)))
         else:
             irc.reply(_('There are currently no scheduled commands.'))
 
@@ -246,15 +251,17 @@ class Scheduler(callbacks.Plugin):
 
         L = list((k, v) for k, v in self.events.items() if v['issued_by'] == msg.nick)
         if L:
-            L.sort()
-            for (i, (name, command)) in enumerate(L):
-                L[i] = format('%s: %q', name, command['command'])
-            irc.reply(format('%L', L))
+            irc.reply(format('%L', self._format_list(L)))
         else:
-            irc.reply(_('You have currently got no scheduled commands.'))
+            irc.reply(_('There are currently no scheduled commands.'))
 
+    @wrap
     def listinternal(self, irc, msg, args):
-        """ """
+        """takes no arguments
+
+        Lists all scheduled events, including internal ones.
+        """
+
         internal = schedule.schedule
         out = []
         for sched in internal.schedule:
@@ -318,7 +325,7 @@ class Scheduler(callbacks.Plugin):
         return cnt
 
     @wrap(['owner'])
-    def wipecountdowns(self, irc, msg, args):
+    def wipetimers(self, irc, msg, args):
         """
         Clear all scheduled alerts. """
         cnt = self._wipe_alerts()

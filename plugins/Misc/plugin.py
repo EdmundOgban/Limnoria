@@ -34,10 +34,13 @@ import sys
 import json
 import time
 import functools
+import time
+from datetime import datetime, timezone
+from urllib.request import urlopen
 
+from bs4 import BeautifulSoup as BS
 
 import supybot
-
 import supybot.conf as conf
 from supybot import commands
 import supybot.utils as utils
@@ -349,17 +352,64 @@ class Misc(callbacks.Plugin):
         irc.reply(s)
     version = wrap(thread(version))
 
-    @internationalizeDocstring
-    @wrap([optional('somethingWithoutSpaces')])
-    def source(self, irc, msg, args, what):
-        """[issues]
-
-        Returns a URL saying where to get Sleipnir. Takes \"issues\" as an optional argument.
-        """
-        if what == "issues":
-            irc.reply(_('Issue tracker: https://github.com/EdmundOgban/Limnoria/issues'))
+    #class source(callbacks.Commands):
+    def _format_dt(self, when_s):
+        when = datetime(*(time.strptime(when_s, "%Y-%m-%dT%H:%M:%SZ")[0:6]),
+            tzinfo=timezone.utc)
+        tdelta = datetime.now(timezone.utc) - when
+        if tdelta.days == 0:
+            if tdelta.seconds < 3600:
+                ago_s = "{} minutes ago".format(int(tdelta.seconds / 60))
+            else:
+                ago_s = "{} hours ago".format(int(tdelta.seconds / 3600))
         else:
-            irc.reply(_('My source is at https://github.com/EdmundOgban/Limnoria/tree/Sleipnir_2020-02-26'))
+            ago_s = "{} days ago".format(tdelta.days)
+
+        return ago_s
+
+    def _issue(self, iss):
+        url = "https://github.com/EdmundOgban/Limnoria/issues/{}".format(iss)
+        try:
+            urlh = utils.web.getUrl(url)
+        except utils.web.Error as e:
+            if "404" in str(e):
+                return "Issue {}: Not found.".format(iss)
+            else:
+                raise
+
+        soup = BS(urlh)
+        header = soup.find("h1", {"class": "gh-header-title"})
+        meta = soup.find("div", {"class": "gh-header-meta"})
+        tbl = meta.findAll("div", {"class": "TableObject-item"})
+        title_s = header.find("span", {"class": "js-issue-title"}).text.strip()
+        status_s = tbl[0].span["title"]
+        status_s = status_s.split(":")[1].strip()
+        openedby_s = tbl[1].a.text
+        when_s = tbl[1].find("relative-time")["datetime"]
+        ago_s = self._format_dt(when_s)
+        return "Issue {} ({}): {} - opened by {} {} - {}".format(
+            iss, status_s, title_s, openedby_s, ago_s, url)
+
+    @internationalizeDocstring
+    @wrap
+    def source(self, irc, msg, args):
+        """no arguments
+
+        Returns a URL saying where to get Sleipnir's code.
+        """
+        irc.reply(_('My source is at https://github.com/EdmundOgban/Limnoria/tree/Sleipnir_2020-02-26'))
+
+    @wrap([optional('positiveInt')])
+    def issue(self, irc, msg, arg, what):
+        """<issue_no>
+
+        Returns the specified issue number or the issue
+        tracker URL if nothing is specified.
+        """
+        if what:
+            irc.reply(self._issue(what))
+        else:
+            irc.reply(_('Issue tracker: https://github.com/EdmundOgban/Limnoria/issues'))
 
     @internationalizeDocstring
     def more(self, irc, msg, args, nick):

@@ -47,8 +47,8 @@ class Currency(callbacks.Plugin):
     """Cryptocurrencies statistics"""
     threaded = True
 
-    @wrap([optional('somethingWithoutSpaces')])
-    def coin(self, irc, msg, args, coin):
+    @wrap([optional('somethingWithoutSpaces'), additional('float')])
+    def coin(self, irc, msg, args, coin, qty):
         """ [coin] """
         if coin:
             res = litebit.scrape([coin])
@@ -61,6 +61,10 @@ class Currency(callbacks.Plugin):
 
         out = []
         for coin, available, buy, sell in res:
+            if qty:
+                qty = abs(qty)
+                buy, sell = buy * qty, sell * qty
+
             out.append("%s (%s): buy € %.3f sell € %.3f spread %.2f%%" % (
               litebit.abbr_2_name[coin], "y" if available else "n",
               buy, sell, (buy / sell - 1) * 100))

@@ -44,7 +44,6 @@ from supybot.commands import *
 _ = PluginInternationalization('String')
 
 from . import passwdgen
-from . import souffle
 
 import multiprocessing
 
@@ -270,7 +269,7 @@ class String(callbacks.Plugin):
         res = []
         for i in range(cnt):
             res.append(passwdgen.passgen(length))
-        irc.reply(", ".join(res))
+        irc.reply(" ".join(res))
 
 Class = String
 

@@ -178,7 +178,7 @@ class Google(callbacks.PluginRegexp):
         """
         opts = dict(opts)
         data = self.search(text, msg.channel, irc.network,
-                           {'smallsearch': True})
+                           {"smallsearch": True})
         data = self.decode(data)
         if data:
             url = data[0]['url']
@@ -242,6 +242,29 @@ class Google(callbacks.PluginRegexp):
         Returns the results of each search, in order, from greatest number
         of results to least.
         """
+        if not args:
+            # TODO: give help
+            # clsname = self.__class__.__name__
+            # methname = __import__("inspect").currentframe().f_code.co_name
+            # cmdpath = "{} {}".format(clsname, methname)
+            # command = list(map(callbacks.canonicalName, methname))
+            # maxL, cbs = irc.findCallbacksForArgs(command)
+            # irc.reply("{} {}".format(maxL, cbs))
+            # if maxL == command and len(cbs) == 1:
+                # assert cbs, 'Odd, maxL == command, but no cbs.'
+                # irc.reply(_.__call__(cbs[0].getCommandHelp(command, False)))
+
+            return
+
+        def convert_size(size):
+            #power = 2**10 # 1024
+            power = 1000
+            n = 0
+            while size > power:
+                size /=  power
+                n += 1
+            return "%.1f%s" % (size, ["", "k", "M", "G", "T"][n])
+
         channel = msg.channel
         network = irc.network
         results = []
@@ -256,15 +279,27 @@ class Google(callbacks.PluginRegexp):
             if stats == '':
                 results.append((0, args))
                 continue
+
             count = ''.join(filter('0123456789'.__contains__, stats))
             results.append((int(count), arg))
+
         results.sort()
         results.reverse()
         if self.registryValue('bold', channel, network):
             bold = ircutils.bold
         else:
             bold = repr
-        s = ', '.join([format('%s: %i', bold(s), i) for (i, s) in results])
+
+        it = iter(results)
+        tied = all(a[0] == b[0] for (a, b) in zip(it, it))
+        s = ', '.join([format('%s: %i', bold(s), convert_size(i)) for (i, s) in results])
+        if len(args) > 1:
+            if tied:
+                s += ", tied!"
+            else:
+                winner = max(results, key=lambda x: x[0])
+                s += ", {} wins!".format(bold(winner[1]))
+
         irc.reply(s)
 
     def _translate(self, sourceLang, targetLang, text):
