@@ -450,8 +450,11 @@ class Google(callbacks.PluginRegexp):
     @wrap(['text'])
     def autocomplete(self, irc, msg, args, text):
         """ <text> """
-        aut = json.loads(
-            utils.web.getUrl(self._gautocompleteUrl % utils.web.urlquote_plus(text)))[1]
+        autraw = utils.web.getUrl(self._gautocompleteUrl % utils.web.urlquote_plus(text))
+        if autraw.find(",") == -1:
+            irc.reply("Sorry, I'm broken. Edmund\ fix me!")
+            return
+        aut = json.loads(autraw)[1]
         if not aut:
             irc.reply("I could not find any autocompletion for: {}.".format(text))
         else:
