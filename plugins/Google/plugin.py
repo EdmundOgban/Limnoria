@@ -454,7 +454,7 @@ class Google(callbacks.PluginRegexp):
         try:
             aut = json.loads(autraw)[1]
         except (json.decoder.JSONDecodeError, IndexError) as e:
-            irc.reply("Error: {}".format(e))
+            irc.error("Error: {}".format(e))
         else:
             if not aut:
                 irc.reply("I could not find any autocompletion for: {}.".format(text))
