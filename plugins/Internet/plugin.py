@@ -546,6 +546,7 @@ class Internet(callbacks.Plugin):
                 "url": url,
                 "description": description.get_text(strip=True),
             })
+        return r
 
     @wrap(["text"])
     def ddg(self, irc, msg, args, text):
