@@ -536,8 +536,8 @@ class Internet(callbacks.Plugin):
         result = page.find("div", {"class": "result__body"})
         title = result.find("h2", {"class": "result__title"}).text.strip()
         try:
-            url = title.find("a").attrs["href"]
-            url = utils.web.urlunquote(url[url.rfind("=")+1:])
+            query = urlparse.urlparse(title.find("a").attrs["href"]).query
+            url = urlparse.parse_qs(query)["uddg"][0]
             description = result.find("a", {"class": "result__snippet"}).text
         except Exception:
             irc.reply("{}".format(title))   # Title will likely be a DuckDuckGo
