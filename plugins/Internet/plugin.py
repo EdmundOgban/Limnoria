@@ -528,22 +528,35 @@ class Internet(callbacks.Plugin):
             irc.reply(title)
 
     _ddgSearchUrl = 'https://duckduckgo.com/html/?q=%s'
-    @wrap(["text"])
-    def ddg(self, irc, msg, args, text):
+    def _ddg(self, text):
         page = BS(utils.web.getUrl(self._ddgSearchUrl %
                                    utils.web.urlquote_plus(text),
                                    headers=utils.web.defaultHeaders))
-        result = page.find("div", {"class": "result__body"})
-        title = result.find("h2", {"class": "result__title"}).text.strip()
-        try:
-            query = urlparse.urlparse(title.find("a").attrs["href"]).query
+        results = page.find_all("div", class_="result__body")
+        if len(results) == 1:
+            return []
+        r = []
+        for result in results:
+            title = result.find("h2", class_="result__title")
+            query = urlparse.urlparse(title.find("a")["href"]).query
             url = urlparse.parse_qs(query)["uddg"][0]
-            description = result.find("a", {"class": "result__snippet"}).text
-        except Exception:
-            irc.reply("{}".format(title))   # Title will likely be a DuckDuckGo
-                                            # error like "No results."
+            description = result.find("a", class_="result__snippet")
+            r.append({
+                "title": title.get_text(strip=True),
+                "url": url,
+                "description": description.get_text(strip=True),
+            })
+
+    @wrap(["text"])
+    def ddg(self, irc, msg, args, text):
+        try:
+            result = self._ddg(text)[0]
+        except IndexError:
+            irc.reply("Can't find what you are looking for.")
+        except Exception as e:
+            irc.error(e)
         else:
-            irc.reply('{} <{}>: {}'.format(title, url, description))
+            irc.reply("{} <{}>".format(result["title"], result["url"]))
 
 Internet = internationalizeDocstring(Internet)
 
