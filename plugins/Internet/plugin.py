@@ -555,7 +555,7 @@ class Internet(callbacks.Plugin):
         except IndexError:
             irc.reply("Can't find what you are looking for.")
         else:
-            irc.reply("DuckDuckGo({}): {} ({})".format(
+            irc.reply("DuckDuckGo ({}): {} <{}>".format(
                 text, ircutils.bold(result["title"]), result["url"]))
 
 Internet = internationalizeDocstring(Internet)
