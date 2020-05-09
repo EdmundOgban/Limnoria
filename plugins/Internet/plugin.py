@@ -554,8 +554,6 @@ class Internet(callbacks.Plugin):
             result = self._ddg(text)[0]
         except IndexError:
             irc.reply("Can't find what you are looking for.")
-        except Exception as e:
-            irc.error(e)
         else:
             irc.reply("{} <{}>".format(result["title"], result["url"]))
 
