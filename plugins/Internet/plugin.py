@@ -527,6 +527,37 @@ class Internet(callbacks.Plugin):
         if title is not None:
             irc.reply(title)
 
+    _ddgSearchUrl = 'https://duckduckgo.com/html/?q=%s'
+    def _ddg(self, text):
+        page = BS(utils.web.getUrl(self._ddgSearchUrl %
+                                   utils.web.urlquote_plus(text),
+                                   headers=utils.web.defaultHeaders))
+        results = page.find_all("div", class_="result__body")
+        if len(results) == 1:
+            return []
+        r = []
+        for result in results:
+            title = result.find("h2", class_="result__title")
+            query = urlparse.urlparse(title.find("a")["href"]).query
+            url = urlparse.parse_qs(query)["uddg"][0]
+            description = result.find("a", class_="result__snippet")
+            r.append({
+                "title": title.get_text(strip=True),
+                "url": url,
+                "description": description.get_text(strip=True),
+            })
+        return r
+
+    @wrap(["text"])
+    def ddg(self, irc, msg, args, text):
+        try:
+            result = self._ddg(text)[0]
+        except IndexError:
+            irc.reply("Can't find what you are looking for.")
+        else:
+            irc.reply("DuckDuckGo ({}): {} <{}>".format(
+                text, ircutils.bold(result["title"]), result["url"]))
+
 Internet = internationalizeDocstring(Internet)
 
 Class = Internet
