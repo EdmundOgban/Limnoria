@@ -533,7 +533,7 @@ class Internet(callbacks.Plugin):
                                    utils.web.urlquote_plus(text),
                                    headers=utils.web.defaultHeaders))
         dym = page.find("div", id="did_you_mean")
-        if dym:
+        if dym is not None:
             return self._ddg(dym.find_all("a")[-1].text)
         results = page.find_all("div", class_="result__body")
         if len(results) == 1:
