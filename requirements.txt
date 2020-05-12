@@ -7,3 +7,8 @@ sqlalchemy
 PySocks
 mock
 cryptography
+requests
+beautifulsoup4
+Pyro4
+defusedxml
+mwparserfromhell
