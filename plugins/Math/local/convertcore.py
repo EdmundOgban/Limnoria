@@ -252,11 +252,13 @@ man year      = 52 man week
 [temperature]
 K                 = !     # Kelvin
 Kelvin            = K
+kelvin            = K
 deg K             = K     # Kelvin
 degree Kelvin     = K
 
 C                 = [K] x + 273.15 ; x - 273.15  # Celsius  # non-linear
 Celsius           = [K] x + 273.15 ; x - 273.15  #          # non-linear
+celsius           = [K] x + 273.15 ; x - 273.15  #          # non-linear
 deg C             = [K] x + 273.15 ; x - 273.15  # Celsius  # non-linear
 degree Celsius    = [K] x + 273.15 ; x - 273.15  #          # non-linear
 
@@ -265,6 +267,7 @@ Rankine           = R
 deg R             = R           # Rankine
 F                 = [R] x + 459.67 ; x - 459.67  # Fahrenheit  # non-linear
 Fahrenheit        = [R] x + 459.67 ; x - 459.67  #             # non-linear
+fahrenheit        = [R] x + 459.67 ; x - 459.67  #             # non-linear
 deg F             = [R] x + 459.67 ; x - 459.67  # Fahrenheit  # non-linear
 degree Fahrenheit = [R] x + 459.67 ; x - 459.67  #             # non-linear
 
@@ -1283,3 +1286,4 @@ def units(type):
         return '%s units: %s' % (type, ', '.join(unitsByType[type]))
     else:
         return 'valid types: ' + ', '.join(types)
+
