@@ -50,8 +50,4 @@ def configure(advanced):
 
 Eval = conf.registerPlugin('Eval')
 # This is where your configuration variables (if any) should go.  For example:
-conf.registerChannelValue(conf.supybot.abuse, 'botPrefixes',
-    registry.String('', _("""Bot prefixes list separated by space""")))
-conf.registerChannelValue(conf.supybot.abuse, 'escapeOtherBots',
-    registry.Boolean(True, _("""Enable other bot commands escaping""")))
 # vim:set shiftwidth=4 tabstop=4 expandtab textwidth=79:

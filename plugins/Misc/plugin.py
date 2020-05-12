@@ -35,6 +35,7 @@ import json
 import time
 import functools
 import time
+import urllib.parse as urlparse
 from datetime import datetime, timezone
 from urllib.request import urlopen
 
@@ -367,28 +368,55 @@ class Misc(callbacks.Plugin):
 
         return ago_s
 
-    def _issue(self, iss):
-        url = "https://github.com/EdmundOgban/Limnoria/issues/{}".format(iss)
-        try:
-            urlh = utils.web.getUrl(url)
-        except utils.web.Error as e:
-            if "404" in str(e):
-                return "Issue {}: Not found.".format(iss)
-            else:
-                raise
-
-        soup = BS(urlh)
+    def _scrape_gh(self, soup):
         header = soup.find("h1", {"class": "gh-header-title"})
         meta = soup.find("div", {"class": "gh-header-meta"})
         tbl = meta.findAll("div", {"class": "TableObject-item"})
         title_s = header.find("span", {"class": "js-issue-title"}).text.strip()
         status_s = tbl[0].span["title"]
         status_s = status_s.split(":")[1].strip()
-        openedby_s = tbl[1].a.text
-        when_s = tbl[1].find("relative-time")["datetime"]
-        ago_s = self._format_dt(when_s)
-        return "Issue {} ({}): {} - opened by {} {} - {}".format(
-            iss, status_s, title_s, openedby_s, ago_s, url)
+        who_s = tbl[1].a.text
+        when_s = tbl[1].find("relative-time")
+        if when_s is not None:
+            ago_s = self._format_dt(when_s["datetime"])
+        else:
+            ago_s = ""
+
+        return {
+            "status": status_s,
+            "title": title_s,
+            "who": who_s,
+            "when": ago_s
+        }
+
+    def _issue(self, issueno):
+        url = "https://github.com/EdmundOgban/Limnoria/issues/{}".format(issueno)
+        try:
+            urlh = utils.web.getUrlFd(url)
+        except utils.web.Error as e:
+            if "404" in str(e):
+                return "Issue {}: Not found.".format(issueno)
+            else:
+                raise
+        
+        s = "{} {} ({status}): {title} - {verb} by {who}"
+        soup = BS(urlh, "html.parser")
+        url = urlh.geturl()
+        urlsplt = urlparse.urlsplit(url)
+        pathsplt = urlsplt.path.split("/")
+        data = self._scrape_gh(soup)
+        if "issues" in pathsplt:
+            s = "{} {{when}}".format(s)
+            what = "Issue"
+            data["verb"] = "opened"
+        elif "pull" in pathsplt:
+            what = "Pull Request"
+            data["verb"] = data["status"].lower().replace("open", "opened")
+        else:
+            raise utils.web.Error("redirect to unknown page: '{}'".format(url))
+
+        s = s.format(what, issueno, **data)
+        return "{} - {}".format(s, url)
 
     @internationalizeDocstring
     @wrap
@@ -397,17 +425,17 @@ class Misc(callbacks.Plugin):
 
         Returns a URL saying where to get Sleipnir's code.
         """
-        irc.reply(_('My source is at https://github.com/EdmundOgban/Limnoria/tree/Sleipnir_2020-02-26'))
+        irc.reply(_('My source is at https://github.com/EdmundOgban/Limnoria/tree/Sleipnir'))
 
     @wrap([optional('positiveInt')])
-    def issue(self, irc, msg, arg, what):
+    def issue(self, irc, msg, arg, issueno):
         """<issue_no>
 
         Returns the specified issue number or the issue
         tracker URL if nothing is specified.
         """
-        if what:
-            irc.reply(self._issue(what))
+        if issueno:
+            irc.reply(self._issue(issueno))
         else:
             irc.reply(_('Issue tracker: https://github.com/EdmundOgban/Limnoria/issues'))
 

@@ -542,21 +542,27 @@ class Internet(callbacks.Plugin):
             url = urlparse.parse_qs(query)["uddg"][0]
             description = result.find("a", class_="result__snippet")
             r.append({
-                "title": title.get_text(strip=True),
+                "title": title.text.strip(),
                 "url": url,
-                "description": description.get_text(strip=True),
+                "description": description.text.strip(),
             })
         return r
 
     @wrap(["text"])
     def ddg(self, irc, msg, args, text):
+        """<search>
+
+        Searches duckduckgo.com for the given string.
+        """
         try:
             result = self._ddg(text)[0]
         except IndexError:
             irc.reply("Can't find what you are looking for.")
         else:
-            irc.reply("DuckDuckGo ({}): {} <{}>".format(
-                text, ircutils.bold(result["title"]), result["url"]))
+            text = utils.str.shorten(text, 30)
+            title = ircutils.bold(result["title"])
+            url = result["url"]
+            irc.reply("DuckDuckGo ({}): {} <{}>".format(text, title, url))
 
 Internet = internationalizeDocstring(Internet)
 

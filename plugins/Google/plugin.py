@@ -47,6 +47,14 @@ _ = PluginInternationalization('Google')
 from . import tr_langs
 from .google import translate as gtranslate
 
+
+def removeprefix(s, prefix):
+    if s.startswith(prefix):
+        s = s[len(prefix):]
+
+    return s
+
+
 class Google(callbacks.PluginRegexp):
     """This is a simple plugin to provide access to the Google services we
     all know and love from our favorite IRC bot."""
@@ -439,7 +447,8 @@ class Google(callbacks.PluginRegexp):
         Uses Google's calculator to calculate the value of <expression>.
         """
         url = self._googleUrl(expr, msg.channel, irc.network)
-        h = {"User-Agent":"Mozilla/5.0 (Windows NT 6.2; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/32.0.1667.0 Safari/537.36"}
+        h = {"User-Agent":"Mozilla/5.0 (Windows NT 6.2; Win64; x64) AppleWebKit/537.36 "
+            "(KHTML, like Gecko) Chrome/32.0.1667.0 Safari/537.36"}
         html = utils.web.getUrl(url, headers=h).decode('utf8')
         match = self._calcRe1.search(html)
         if not match:
@@ -491,11 +500,15 @@ class Google(callbacks.PluginRegexp):
         except (json.decoder.JSONDecodeError, IndexError) as e:
             irc.error(e)
         else:
-            if not aut:
-                irc.reply("I could not find any autocompletion for: {}.".format(text))
+            t = text.lower()
+            s = ", ".join(
+                "\u2026{}".format(removeprefix(a, t)) if a.startswith(t) else a
+                for a in aut if a != t
+            )
+            if not s:
+                irc.reply("I could not find any autocompletion for '{}'.".format(text))
             else:
-                irc.reply("Autocomplete <{}>: {}".format(text, ", ".join(aut)))
-
+                irc.reply("Autocomplete ({}): {}".format(text, s))
 
 Class = Google
 

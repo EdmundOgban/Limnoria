@@ -148,16 +148,22 @@ def minutecast(location, *, lang=DEFAULT_LANG, entry_index=0):
     pre = "{location}, {country}".format(**entry)
     locale_strings = locale["unavailable"]
     msg = locale_strings.get(lang, locale_strings[DEFAULT_LANG])
+    minutecast_mtch = re.search("window.minuteCastMinutes = ([^;]+)", request.text)
+    summary = None
 
-    minutecast_mtch = re.search("var minuteCastForecast = ([^;]+)", request.text)
+    soup = BS(request.text, "html.parser")
+    mcast_dial = soup.find("div", class_="minutecast-dial")
+    if mcast_dial is not None:
+        p_title = mcast_dial.find("p", class_="title")
+        if p_title:
+            summary = p_title.text.strip()
 
     if minutecast_mtch:
-        details = json.loads(minutecast_mtch.group(1))
+        minutes_forecast = json.loads(minutecast_mtch.group(1))
 
-        if not details:
+        if not minutes_forecast:
             return pre, msg
 
-        minutes_forecast = details["minutes"]
         last_time = minutes_forecast[0]["time"]
         last_phrase = minutes_forecast[0]["phrase"]
         interval_forecast = []
@@ -182,12 +188,14 @@ def minutecast(location, *, lang=DEFAULT_LANG, entry_index=0):
                     interval_forecast.append((time, phrase))
                 else:
                     interval_forecast.append(interval_str)
-
-        if len(interval_forecast) == 1:
-            msg = "{}.".format(details["summary"])
+        
+        if len(interval_forecast) == 1 and summary is not None:
+            msg = "{}.".format(summary)
         else:
-            minutecast_intervals = ["{}: {}".format(time, phrase) for time, phrase in interval_forecast]
-            msg = "{}. {}".format(details["summary"], ', '.join(minutecast_intervals))
+            minutecast_intervals = ["{}: {}".format(time, phrase)
+                for time, phrase in interval_forecast]
+            msg = "{}. ".format(summary) if summary is not None else ""
+            msg += ', '.join(minutecast_intervals)
 
     return pre, msg
 

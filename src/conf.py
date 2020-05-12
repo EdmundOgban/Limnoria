@@ -829,6 +829,10 @@ registerGlobalValue(supybot.commands, 'allowShell',
 # supybot.abuse.  For stuff relating to abuse of the bot.
 ###
 registerGroup(supybot, 'abuse')
+registerChannelValue(supybot.abuse, 'botPrefixes',
+    registry.String('', _("""Bot prefixes list separated by space.""")))
+registerChannelValue(supybot.abuse, 'escapeOtherBots',
+    registry.Boolean(True, _("""Enable other bot commands escaping""")))
 registerGroup(supybot.abuse, 'flood')
 registerGlobalValue(supybot.abuse.flood, 'interval',
     registry.PositiveInteger(60, _("""Determines the interval used for
