@@ -31,8 +31,8 @@ def _wikidata_urlget(lang, params):
     return req.json()
 
 
-def _wikidata_search(title, lang):
-    log.info("Wikipedia ENDPOINT _wikidata_search")
+def _wikidata_query(title, lang):
+    log.info("Wikipedia ENDPOINT _wikidata_query")
     params = {
         "action": "query",
         "list": "search",
@@ -78,6 +78,7 @@ def _wiki_query(title, lang):
     params = {
         "action": "query",
         "prop": "revisions",
+        "redirects": "",
         "rvprop": "content",
         "rvslots": "main",
         "rvlimit": 1,
@@ -219,15 +220,9 @@ def _wiki_page(title, lang, *, periods):
     try:
         ret = _parse_nodes(wikidoc, lang, periods=periods)
     except WikiMultipleDefinitions:
+        # TODO: Better handling of multiple definitions
         return _build_return(lang, ttitle, "Multiple definitions available")
     else:
-        # FIXME: This should be smarter
-        first = ret[0].strip(" -")
-        if first in ("REDIRECT", "RINVIA"):
-            to = ret[1].strip()
-            log.info(f"Wikipedia REDIRECT in page from {title} to {to}")
-            return _wiki_page(to, lang, periods=periods)
-
         return _build_return(lang, ttitle, "".join(ret).strip())
 
 
@@ -236,7 +231,7 @@ def search(title, lang="en", *, periods=True):
     if keywords:
         term = keywords[0]
     else:
-        res = _wikidata_search(title, lang)
+        res = _wikidata_query(title, lang)
         if "query" not in res:
             return _build_return(lang, title, "Something's wrong :\\")
 
