@@ -48,6 +48,7 @@ import supybot.callbacks as callbacks
 from supybot.commands import *
 from supybot.utils.iter import any as supyany
 from supybot.i18n import PluginInternationalization, internationalizeDocstring
+from supybot.plugins import Knowledge
 _ = PluginInternationalization('Internet')
 
 from . import htmlcolors
@@ -565,7 +566,11 @@ class Internet(callbacks.Plugin):
             text = utils.str.shorten(text, 30)
             title = ircutils.bold(result["title"])
             url = result["url"]
-            irc.reply("DuckDuckGo ({}): {} <{}>".format(text, title, url))
+            if url.startswith("https://it.wikipedia.org/wiki/"):
+                title = title[1:title.rfind('-')-1] # Remove bold and truncate before ` - Wikipedia`
+                Knowledge.plugin.Knowledge.wiki(self, irc, msg, [title])
+            else:
+                irc.reply("DuckDuckGo ({}): {} <{}>".format(text, title, url))
 
 Internet = internationalizeDocstring(Internet)
 
