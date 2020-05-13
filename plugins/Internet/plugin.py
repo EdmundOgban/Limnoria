@@ -547,7 +547,7 @@ class Internet(callbacks.Plugin):
             r.append({
                 "title": title.text.strip(),
                 "url": url,
-                "description": description.text.strip(),
+                "description": description.text.strip() if description else '',
             })
         return r
 
