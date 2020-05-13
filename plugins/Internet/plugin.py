@@ -66,15 +66,15 @@ class Internet(callbacks.Plugin):
         self._http_codes = dict()
         self._fill_http_codes()
 
-    def _urlget(self, url, *, data=None, override_ua=True):
+    def _urlget(self, url, *, data=None, browser_ua=False):
         req = urllib.request.Request(url)
-        if override_ua is True:
-            req.add_header("User-Agent", "curl/7.70.0")
-            #req.add_header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; WOW64; rv:51.0) Gecko/20100101 Firefox/51.0")
+        if browser_ua is True:
+            req.add_header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; WOW64; rv:51.0) Gecko/20100101 Firefox/51.0")
             #req.add_header("User-Agent", "Lynx/2.8.7rel.1 libwww-FM/2.14 SSL-MM/1.4.1 OpenSSL/1.0.2a")
-        
+        else:
+            req.add_header("User-Agent", "curl/7.70.0")
+
         urlh = urllib.request.urlopen(req, data)
-    
         if urlh.code != 200:
             desc, _ = self._http_codes[urlh.code]
             raise urllib.error.HTTPError(url=url, code=urlh.code, msg=desc, hdrs=data, fp=urlh)
@@ -301,7 +301,14 @@ class Internet(callbacks.Plugin):
         L[1] = L[1].encode('idna').decode('ascii')
         url = urlparse.urlunsplit(L)
 
-        urlh = self._urlget(url, override_ua=True)
+        try:
+            urlh = self._urlget(url)
+        except urllib.error.HTTPError as e:
+            if e.code in (403, 404):
+                urlh = self._urlget(url, browser_ua=True)
+            else:
+                raise
+
         info = urlh.info()
         if info.get_content_type() not in self._supported_content:
             s = "(%s): Content-Type: %s - Content-Length: %s"
@@ -349,7 +356,7 @@ class Internet(callbacks.Plugin):
         urlsplt[1] = "twitter.com"
         url = urlparse.urlunsplit(urlsplt)
 
-        soup = BS(self._urlget(url, override_ua=False))
+        soup = BS(self._urlget(url))
         header = soup.find("div", {"class": "permalink-header"})
         try:
             nm = header.find("span", {"class": "FullNameGroup"})
