@@ -19,6 +19,38 @@ class WikiMultipleDefinitions(Exception):
     pass
 
 
+def _wikidata_urlget(lang, params):
+    API_URL = "https://www.wikidata.org/w/api.php"
+    params.update({
+        "format": "json",
+        "formatversion": "2"
+    })
+    headers = {"User-Agent": "Sleipnir/1.0"}
+    req = requests.get(API_URL, headers=headers, params=params)
+    log.info(f"GET {API_URL}?{urlparse.urlencode(params)}")
+    return req.json()
+
+
+def _wikidata_search(title, lang):
+    log.info("Wikipedia ENDPOINT _wikidata_search")
+    params = {
+        "action": "query",
+        "list": "search",
+        "srsearch": title,
+        "srlimit": 1
+    }
+    return _wikidata_urlget(lang, params)
+
+
+def _wikidata_entities(id, lang):
+    log.info("Wikipedia ENDPOINT _wikidata_entities")
+    params = {
+        "action": "wbgetentities",
+        "ids": id
+    }
+    return _wikidata_urlget(lang, params)
+
+
 def _wiki_urlget(lang, params):
     API_URL = "https://{}.wikipedia.org/w/api.php".format(lang)
     params.update({
@@ -54,7 +86,18 @@ def _wiki_query(title, lang):
     return _wiki_urlget(lang, params)
 
 
+def _wiki_opensearch(title, lang):
+    log.info("Wikipedia ENDPOINT _wiki_opensearch")
+    params = {
+        "action": "opensearch",
+        "search": title,
+        "namespace": 0
+    }
+    return _wiki_urlget(lang, params)
+
+
 def _wiki_expandtemplate(template, lang):
+    log.info("Wikipedia ENDPOINT _wiki_expandtemplate")
     params = {
         "action": "expandtemplates",
         "prop": "wikitext",
@@ -68,23 +111,30 @@ def _parse_templates():
     pass
 
 
+def _unwanted_node(node):
+    if hasattr(node, "tag") and node.tag == "ref":
+        # Skip refs
+        return True
+
+    strnode = str(node)
+    m = mwlink.match(strnode)
+    if m:
+        content = m.group(1)
+        prefixes = ("File", "Image", "Media")
+        if any(content.startswith(prefix) for prefix in prefixes):
+            # Image node, don't care about that.
+            return True
+
+    return False
+
 def _parse_nodes(wikidoc, lang, *, periods):
     out = []
     partials = []
     for node in wikidoc.nodes:
-        # Skip refs
-        if hasattr(node, "tag") and node.tag == "ref":
+        if _unwanted_node(node):
             continue
 
         strnode = str(node)
-        m = mwlink.match(strnode)
-        if m:
-            content = m.group(1)
-            prefixes = ("File", "Image", "Media")
-            if any(content.startswith(prefix) for prefix in prefixes):
-                # Image node, don't care about that.
-                continue
-
         m = mwtemplate.match(strnode)
         if m:
             content = m.group(1).lower()
@@ -97,11 +147,13 @@ def _parse_nodes(wikidoc, lang, *, periods):
             label = label.strip()
             if label.startswith("disambigua"):
                 raise WikiMultipleDefinitions
-            elif label == "bio" or label.startswith("ipa"):
+            elif label == "bio": # TODO: or label.startswith("ipa"):
                 node = _wiki_expandtemplate(strnode, lang)
+                log.info(f"strnode: {strnode}")
                 template_text = node["expandtemplates"]["wikitext"]
                 ret = _parse_nodes(mwparserfromhell.parse(template_text),
                     lang, periods=periods)
+                log.info(f"ret: {ret}")
                 out.extend(ret)
                 continue
             elif mwlink.match(label) or mwfmt.match(label):
@@ -115,12 +167,25 @@ def _parse_nodes(wikidoc, lang, *, periods):
 
         strnode_nomarkup = str(node_nomarkup)
         if periods:
+            # Check that text is not in a markup element
             if isinstance(node, mw_nodes.text.Text):
+                # Check if we've encountered the last sentence
                 try:
                     a, b = strnode_nomarkup.split(".", 1)
                 except ValueError:
                     partials.append(strnode_nomarkup)
                 else:
+                    # Check that there are at least 3 characters between space and dot
+                    # and the word doesn't start with a parenthesis.
+                    try:
+                        x, y = a.rsplit(" ", 1)
+                    except ValueError:
+                        pass
+                    else:
+                        if len(y) < 3 or y[0] in "(<[{":
+                            partials.append(strnode_nomarkup)
+                            continue
+
                     partials.extend([a, ".\n"])
                     out.append("".join(partials))
                     partials = [b]
@@ -137,29 +202,15 @@ def _build_return(lang, title, text):
     return url, title, text
 
 
-def search(title, lang="en", *, periods=True, endpoint=_wiki_query): #, endpoint=_wiki_redirects):
-    res = endpoint(title, lang)
+def _wiki_page(title, lang, *, periods):
+    res = _wiki_query(title, lang)
     if "query" not in res:
         return _build_return(lang, title, "Something's wrong :\\")
 
     query = res["query"]
     page = query["pages"][0]
-    #if "redirects" in page:
-    #    redirect_title = page["redirects"][0]["title"]
-    #    log.info(f"Wikipedia found 'redirects' from {title} to {redirect_title}")
-    #    return search(title, lang, periods=periods, endpoint=_wiki_redirects)
-    #elif endpoint != _wiki_query:
-    if endpoint != _wiki_query:
-        log.info(f"Wikipedia no redirect, calling _wiki_query({title})")
-        return search(title, lang, periods=periods, endpoint=_wiki_query)
-
     if "revisions" not in page:
-        if "normalized" in query:
-            normalized = query["normalized"][0]["to"]
-            log.info(f"Wikipedia normalized query from {title} to {normalized}")
-            return search(normalized, lang, endpoint=_wiki_query)
-        else:
-            return _build_return(lang, title, "Not found")
+        return _build_return(lang, title, "Not found")
 
     revision = page["revisions"][0]
     ttitle = page["title"]
@@ -170,12 +221,42 @@ def search(title, lang="en", *, periods=True, endpoint=_wiki_query): #, endpoint
     except WikiMultipleDefinitions:
         return _build_return(lang, ttitle, "Multiple definitions available")
     else:
-        s = "".join(ret)
         # FIXME: This should be smarter
-        if s.startswith("REDIRECT") or s.startswith("RINVIA"):
-            _, to = s.split(" ", 1)
-            to = to.strip()
+        first = ret[0].strip(" -")
+        if first in ("REDIRECT", "RINVIA"):
+            to = ret[1].strip()
             log.info(f"Wikipedia REDIRECT in page from {title} to {to}")
-            return search(to, lang)
+            return _wiki_page(to, lang, periods=periods)
 
-        return _build_return(lang, ttitle, s.strip())
+        return _build_return(lang, ttitle, "".join(ret).strip())
+
+
+def search(title, lang="en", *, periods=True):
+    _, keywords, _, _ = _wiki_opensearch(title, lang)
+    if keywords:
+        term = keywords[0]
+    else:
+        res = _wikidata_search(title, lang)
+        if "query" not in res:
+            return _build_return(lang, title, "Something's wrong :\\")
+
+        searchres = res["query"]["search"]
+        if not searchres:
+            return _build_return(lang, title, "Not found")
+
+        entity_id = searchres[0]["title"]
+        res = _wikidata_entities(entity_id, lang)
+        if "error" in res:
+            return _build_return(lang, title, "Something's wrong :\\")
+
+        entity = res["entities"][entity_id]
+        labels = entity["labels"]
+        aliases = entity["aliases"]
+        if lang in labels:
+            term = labels[lang]["value"]
+        elif lang in aliases:
+            term = aliases[lang][0]["value"]
+        else:
+            return _build_return(lang, title, "Not found")
+
+    return _wiki_page(term, lang, periods=periods)

@@ -106,7 +106,7 @@ class Knowledge(callbacks.Plugin):
         """ <query>
             Search on it.wikipedia.org."""
         lang = "it"
-        s = "Wikipedia ({}): {} - {}"
+        s = "Wikipedia ({}): {} <{}>"
         url, title, res = wikipedia.search(query, lang)
         result = res.split("\n")[0]
         irc.reply(s.format(title, result, url))
