@@ -38,6 +38,8 @@ except ImportError:
     # without the i18n module
     _ = lambda x: x
 
+import os.path
+import pickle
 import re
 from datetime import datetime, timedelta
 
@@ -55,7 +57,12 @@ class Knowledge(callbacks.Plugin):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.covidit_stats = deque(maxlen=2)
+        
+        if os.path.exists("covidit.pickle"):
+            with open("covidit.pickle", "rb") as f:
+                self.covidit_stats = pickle.load(f)
+        else:
+            self.covidit_stats = deque(maxlen=2)
 
     @wrap(["text"])
     def unityidx(self, irc, msg, args, text):
@@ -148,6 +155,10 @@ class Knowledge(callbacks.Plugin):
                      " Infected: {} ({}{:.1f}%); Deaths: {} ({}{:.1f}%);"
                      " Recovered: {} ({}{:.1f}%)")
             irc.reply(out_s.format(*out))
+
+    def die(self):
+        with open("covidit.pickle", "wb") as f:
+            pickle.dump(self.covidit_stats, f)
 
 Class = Knowledge
 
