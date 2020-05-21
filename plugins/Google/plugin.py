@@ -397,16 +397,12 @@ class Google(callbacks.PluginRegexp):
 
         return path
 
-    def doPrivmsg(self, irc, msg, tokens):
+    def doPrivmsg(self, irc, msg):
         if not irc.isChannel(msg.args[0]):
             return
 
         channel = plugins.getChannel(msg.args[0])
-        if tokens[0][-1] in ':,': # to avoid `nick, text` or `nick: text`
-            if len(tokens) > 1:
-                self._last_msg[channel] = " ".join(tokens[1:])
-        else:
-            self._last_msg[channel] = " ".join(tokens)
+        self._last_msg[channel] = " ".join(msg.args[1:])
 
     @wrap(['channeldb', optional('text')])
     def randtr(self, irc, msg, args, channel, text):
