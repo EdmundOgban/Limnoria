@@ -32,6 +32,7 @@ import random
 import re
 import sys
 import json
+from collections import defaultdict
 
 import supybot.conf as conf
 import supybot.utils as utils
