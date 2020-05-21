@@ -56,7 +56,7 @@ class Google(callbacks.PluginRegexp):
     regexps = ['googleSnarfer']
 
     _colorGoogles = {}
-    _last_msg = {}
+    _last_msg = defaultdict(dict)
     def _getColorGoogle(self, m):
         s = m.group(1)
         ret = self._colorGoogles.get(s)
@@ -402,12 +402,12 @@ class Google(callbacks.PluginRegexp):
             return
 
         channel = plugins.getChannel(msg.args[0])
-        self._last_msg[channel] = " ".join(msg.args[1:])
+        self._last_msg[irc.network][channel] = " ".join(msg.args[1:])
 
     @wrap(['channeldb', optional('text')])
     def randtr(self, irc, msg, args, channel, text):
         """ [text] """        
-        text = text or self._last_msg.get(channel)
+        text = text or self._last_msg[irc.network].get(channel)
         if not text:
             return
         path = self._rndlangs()
