@@ -402,8 +402,9 @@ class Google(callbacks.PluginRegexp):
             return
 
         channel = plugins.getChannel(msg.args[0])
-        if tokens[0].endswith(':,') and len(tokens) > 1: # to avoid `nick, text` or `nick: text`
-            self._last_msg[channel] = " ".join(tokens[1:])
+        if tokens[0][-1] in ':,': # to avoid `nick, text` or `nick: text`
+            if len(tokens) > 1:
+                self._last_msg[channel] = " ".join(tokens[1:])
         else:
             self._last_msg[channel] = " ".join(tokens)
 
