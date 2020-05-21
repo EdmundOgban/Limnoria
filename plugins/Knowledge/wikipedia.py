@@ -135,32 +135,37 @@ def _parse_nodes(wikidoc, lang, *, periods):
         if _unwanted_node(node):
             continue
 
+        #if isinstance(node, mw_nodes.template.Template):
         strnode = str(node)
         m = mwtemplate.match(strnode)
         if m:
+            #args = node.params
             content = m.group(1).lower()
             args = content.split("|")
             if len(args) > 1:
                 label, *_ = args
             else:
                 label = args[0]
+            #elif len(args) == 1:
+            #    label = args[0]
+            #else:
+            #    continue
 
             label = label.strip()
             if label.startswith("disambigua"):
                 raise WikiMultipleDefinitions
+            elif mwlink.match(label) or mwfmt.match(label):
+                wkc = mw_wikicode.Wikicode([])
+                wkc.append(label)
+                node = mw_nodes.wikilink.Wikilink(wkc)
             elif label == "bio": # TODO: or label.startswith("ipa"):
-                node = _wiki_expandtemplate(strnode, lang)
-                log.info(f"strnode: {strnode}")
+                node = _wiki_expandtemplate(str(node), lang)
                 template_text = node["expandtemplates"]["wikitext"]
                 ret = _parse_nodes(mwparserfromhell.parse(template_text),
                     lang, periods=periods)
                 log.info(f"ret: {ret}")
                 out.extend(ret)
                 continue
-            elif mwlink.match(label) or mwfmt.match(label):
-                wkc = mw_wikicode.Wikicode([])
-                wkc.append(label)
-                node = mw_nodes.wikilink.Wikilink(wkc)
 
         node_nomarkup = node.__strip__()
         if not node_nomarkup:
@@ -176,14 +181,15 @@ def _parse_nodes(wikidoc, lang, *, periods):
                 except ValueError:
                     partials.append(strnode_nomarkup)
                 else:
-                    # Check that there are at least 3 characters between space and dot
-                    # and the word doesn't start with a parenthesis.
+                    # Check that there are at least 3 characters between space and
+                    # dot, the word doesn't start with a parenthesis, and it's not
+                    # a number.
                     try:
                         x, y = a.rsplit(" ", 1)
                     except ValueError:
                         pass
                     else:
-                        if len(y) < 3 or y[0] in "(<[{":
+                        if len(y) < 3 or y[0] in "(<[{" or y.isdigit():
                             partials.append(strnode_nomarkup)
                             continue
 
