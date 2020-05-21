@@ -410,6 +410,9 @@ class Google(callbacks.PluginRegexp):
         if not irc.isChannel(msg.args[0]):
             return
 
+        if callbacks.addressed(irc, msg):
+            return
+
         channel = plugins.getChannel(msg.args[0])
         self._last_msg[irc.network][channel] = " ".join(msg.args[1:])
 
