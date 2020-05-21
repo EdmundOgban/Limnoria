@@ -402,7 +402,10 @@ class Google(callbacks.PluginRegexp):
             return
 
         channel = plugins.getChannel(msg.args[0])
-        self._last_msg[channel] = " ".join(tokens)
+        if tokens[0].endswith(':,') and len(tokens) > 1: # to avoid `nick, text` or `nick: text`
+            self._last_msg[channel] = " ".join(tokens[1:])
+        else:
+            self._last_msg[channel] = " ".join(tokens)
 
     @wrap(['channeldb', optional('text')])
     def randtr(self, irc, msg, args, channel, text):
