@@ -32,6 +32,7 @@ import random
 import re
 import sys
 import json
+from collections import defaultdict
 
 import supybot.conf as conf
 import supybot.utils as utils
@@ -39,6 +40,7 @@ import supybot.world as world
 from supybot.commands import *
 import supybot.utils.minisix as minisix
 import supybot.ircmsgs as ircmsgs
+import supybot.plugins as plugins
 import supybot.ircutils as ircutils
 import supybot.callbacks as callbacks
 from supybot.i18n import PluginInternationalization, internationalizeDocstring
@@ -63,6 +65,7 @@ class Google(callbacks.PluginRegexp):
     regexps = ['googleSnarfer']
 
     _colorGoogles = {}
+    _last_msg = defaultdict(dict)
     def _getColorGoogle(self, m):
         s = m.group(1)
         ret = self._colorGoogles.get(s)
@@ -403,9 +406,19 @@ class Google(callbacks.PluginRegexp):
 
         return path
 
-    @wrap(['text'])
-    def randtr(self, irc, msg, args, text):
-        """ <text> """        
+    def doPrivmsg(self, irc, msg):
+        if not irc.isChannel(msg.args[0]):
+            return
+
+        channel = plugins.getChannel(msg.args[0])
+        self._last_msg[irc.network][channel] = " ".join(msg.args[1:])
+
+    @wrap(['channeldb', optional('text')])
+    def randtr(self, irc, msg, args, channel, text):
+        """ [text] """        
+        text = text or self._last_msg[irc.network].get(channel)
+        if not text:
+            return
         path = self._rndlangs()
         sl, _, _ = gtranslate.tr('auto', 'it', q=text)
         path.append(sl)
