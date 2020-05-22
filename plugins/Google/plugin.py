@@ -409,6 +409,8 @@ class Google(callbacks.PluginRegexp):
     def doPrivmsg(self, irc, msg):
         if not irc.isChannel(msg.args[0]):
             return
+        if len(msg.args) < 4: # To avoid too short messages
+            return
 
         channel = plugins.getChannel(msg.args[0])
         self._last_msg[irc.network][channel] = " ".join(msg.args[1:])
