@@ -320,7 +320,7 @@ class Internet(callbacks.Plugin):
         #    return "Title (%s): %s" % (utils.str.shorten(url), title_text)
 
         for webpage in self._read_chunked(urlh):
-            mtch = re.search(b"<title[^>]*>(.+)</title>", webpage, re.DOTALL | re.I)
+            mtch = re.search(b"<title[^>]*>(.+?(?=</title>))", webpage, re.DOTALL | re.I)
             mtch2 = re.search(b"<meta property=['\"]og:title['\"] content=['\"]([^'\"]+)['\"]", webpage, re.DOTALL | re.I)
             if mtch or mtch2:
                 try:
