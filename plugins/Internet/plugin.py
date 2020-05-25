@@ -334,7 +334,7 @@ class Internet(callbacks.Plugin):
                     match_text = (mtch2 or mtch).group(1)
 
                 title_text = html.unescape(match_text.strip().decode(charset))
-                return "Title (%s): %s" % (utils.str.shorten(url), title_text)
+                return "Title <%s>: %s" % (utils.str.shorten(url), title_text)
 
     def _checkpoint(self):
         t = time.monotonic() - self._t
