@@ -328,7 +328,11 @@ class Internet(callbacks.Plugin):
                 except IndexError:
                     charset = "ascii"
 
-                match_text = (mtch2 or mtch).group(1)
+                if mtch and mtch2:
+                    match_text = mtch.group(1)
+                else:
+                    match_text = (mtch2 or mtch).group(1)
+
                 title_text = html.unescape(match_text.strip().decode(charset))
                 return "Title (%s): %s" % (utils.str.shorten(url), title_text)
 
