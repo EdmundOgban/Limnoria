@@ -304,7 +304,7 @@ class Internet(callbacks.Plugin):
         try:
             urlh = self._urlget(url)
         except urllib.error.HTTPError as e:
-            if e.code in (403, 404):
+            if e.code in (403, 404, 502):
                 urlh = self._urlget(url, browser_ua=True)
             else:
                 raise
@@ -354,64 +354,70 @@ class Internet(callbacks.Plugin):
         if title:
             irc.reply(title)
 
+    ## Test cases
+    ##https://twitter.com/parcesepulto/status/1243664062300504070
+    ##https://twitter.com/LucaCellamare/status/1243682458698223617
+    ##https://twitter.com/emmevilla/status/1245463860909346824/photo/1
+    ##https://twitter.com/ThingsWork/status/1243648203884388352
+    ##https://twitter.com/GDGC240977/status/1267546417473748992
+    ##https://twitter.com/PlayStation/status/1267525525825900549
+    ##https://twitter.com/Dark_Tesla/status/1267551166864461826
     def _tweet(self, url):
-        # Replace *.twitter.com with twitter.com
+        # Replace *twitter.com with mobile.twitter.com
         urlsplt = list(urlparse.urlsplit(url))
-        urlsplt[1] = "twitter.com"
+        urlsplt[1] = "mobile.twitter.com"
         url = urlparse.urlunsplit(urlsplt)
 
         soup = BS(self._urlget(url))
-        header = soup.find("div", {"class": "permalink-header"})
+        topdoc = soup.find("table", class_="main-tweet")       
+        header = topdoc.find("tr")
+        tweet_content = topdoc.find("td", class_="tweet-content")
         try:
-            nm = header.find("span", {"class": "FullNameGroup"})
+            name = header.find("strong").text
         except AttributeError:
             name = None
         else:
-            verified = bool(nm.find("span", {"class": "Icon--verified"}))
-            name = "{}{}".format(nm.strong.text.strip(), " \u2713" if verified else "")
+            name = name.strip()
 
         try:
-            account = header.find("span", {"class": "username"}).text.strip()
+            account = header.find("span", class_="username").text
         except AttributeError:
             account = None
+        else:
+            verified = "\u2713 " if header.find("a", class_="badge") else ""
+            account = "{}{}".format(verified, account.strip())
 
-        permalink_inner = soup.find("div", {"class": "permalink-inner"})
-        tweet_original = bool(permalink_inner.find("p", {"class": "TweetTextSize--jumbo"}))
-        tweet_text = soup.find("p", {"class": "TweetTextSize--jumbo"})
-        # Test cases
-        #https://twitter.com/parcesepulto/status/1243664062300504070
-        #https://twitter.com/LucaCellamare/status/1243682458698223617
-        #https://twitter.com/emmevilla/status/1245463860909346824/photo/1
-        #https://twitter.com/ThingsWork/status/1243648203884388352
-        if tweet_text and tweet_text.text != "":
+        tweet_text = tweet_content.find("div", class_="tweet-text")
+        if tweet_text and tweet_text.text.strip() != "":
             content = []
-            media_img = soup.find("div", {"class": "AdaptiveMedia-photoContainer"})
-            media_vid = soup.find("div", {"class": "AdaptiveMedia-videoContainer"})
-            for child in tweet_text:
+            imgs = tweet_content.findAll("img")
+            has_video = False
+            for child in tweet_text.div:
+                text = None
                 try:
-                    if "u-hidden" in child.attrs["class"]:
-                        if not media_vid:
-                            prefix = " " if child.text.startswith("http") else " https://"
-                            text = child.text.strip("…\xa0")
-                            content.append(prefix + text)
+                    if "twitter_external_link" in child.attrs["class"]:
+                        url = child.attrs["data-url"]
+                        if "/video/" in url:
+                            has_video = True
+                            text = url
                     else:
-                        content.append(child.text)
+                        text = child.text.strip()
                 except AttributeError:
-                    content.append(child)
+                    text = child.strip()
 
-            if media_img and tweet_original:
-                imgs = media_img.findAll("img")
+                if text:
+                    content.append(text)
+
+            if has_video is False:
                 for img in imgs:
-                    if "class" in img.attrs and "avatar" in img["class"]:
-                        continue
+                    url = img["src"].rsplit(":", 1)[0]
+                    content.append(url.strip())
 
-                    content.extend([" ", img["src"]])
-
-            return name, account, "".join(content)
+            return name, account, " ".join(content)
 
     def _tweet_format(self, name, account, tweet):
         tweet = re.sub(r"\n+", " | ", tweet)
-            
+
         if name is None and account is None:
             s = "Tweet ({}): {}".format(utils.str.shorten(url, 50), tweet)
         elif name is None or account is None:
@@ -538,28 +544,32 @@ class Internet(callbacks.Plugin):
         if title is not None:
             irc.reply(title)
 
-    _ddgSearchUrl = 'https://duckduckgo.com/html/?q=%s'
+    _ddgSearchUrl = 'https://duckduckgo.com/html/?q={}'
     def _ddg(self, text):
-        page = BS(utils.web.getUrl(self._ddgSearchUrl %
-                                   utils.web.urlquote_plus(text),
-                                   headers=utils.web.defaultHeaders))
+        searchurl = self._ddgSearchUrl.format(utils.web.urlquote_plus(text))
+        page = BS(self._urlget(searchurl, browser_ua=True))
+
         dym = page.find("div", id="did_you_mean")
         if dym is not None:
             return self._ddg(dym.find_all("a")[-1].text)
+
         results = page.find_all("div", class_="result__body")
         if len(results) == 1:
             return []
+
         r = []
         for result in results:
-            title = result.find("h2", class_="result__title")
-            query = urlparse.urlparse(title.find("a")["href"]).query
-            url = urlparse.parse_qs(query)["uddg"][0]
+            anchor = result.find("a", class_="result__a")
+            if anchor is None:
+                continue
+
             description = result.find("a", class_="result__snippet")
             r.append({
-                "title": title.text.strip(),
-                "url": url,
+                "title": anchor.text.strip(),
+                "url": anchor["href"],
                 "description": description.text.strip() if description else '',
             })
+
         return r
 
     @wrap(["text"])
