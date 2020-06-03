@@ -222,7 +222,6 @@ class Google(callbacks.PluginRegexp):
         # do not want @google to echo ~20 lines of results, even if you
         # have reply.oneToOne enabled.
         onetoone = self.registryValue('oneToOne', msg.channel, irc.network)
-        open("/home/enrico/google.html", "wb").write(data.encode())
         for result in self.formatData(data,
                                   bold=bold, max=max, onetoone=onetoone):
             irc.reply(result)
