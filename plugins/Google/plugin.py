@@ -90,7 +90,7 @@ class Google(callbacks.PluginRegexp):
             msg = ircmsgs.privmsg(msg.args[0], s, msg=msg)
         return msg
 
-    _decode_re = re.compile(r'<div class="\w+"><a href="/url\?q=(?P<url>[^"]+)&[^"]+"><div class="(\w| )+">(?P<title>.*?)</div><div class="(\w| )+">(?P<breadcrumbs>.*?)</div></a></div>(?P<content><div class="(\w| )+">.*?</div></div>)', re.DOTALL | re.MULTILINE)
+    _decode_re = re.compile(r'<div class="\w+"><a href="/url\?q=(?P<url>[^"]+)&[^"]+"[^>]*><h3 class="(?:\w| )+"><div class="(\w| )+">(?P<title>.*?)</div></h3><div class="(\w| )+">(?P<breadcrumbs>.*?)</div></a></div>(?P<content><div class="(\w| )+">.*?</div></div>)', re.DOTALL | re.MULTILINE)
     @classmethod
     def decode(cls, text):
         matches = cls._decode_re.finditer(text)
@@ -222,6 +222,7 @@ class Google(callbacks.PluginRegexp):
         # do not want @google to echo ~20 lines of results, even if you
         # have reply.oneToOne enabled.
         onetoone = self.registryValue('oneToOne', msg.channel, irc.network)
+        open("/home/enrico/google.html", "wb").write(data.encode())
         for result in self.formatData(data,
                                   bold=bold, max=max, onetoone=onetoone):
             irc.reply(result)
@@ -423,7 +424,11 @@ class Google(callbacks.PluginRegexp):
         if not text:
             return
         path = self._rndlangs()
-        sl, _, _ = gtranslate.tr('auto', 'it', q=text)
+        sl, _, trs = gtranslate.tr('auto', 'it', q=text)
+        if not trs:
+            irc.reply(text)
+            return
+
         path.append(sl)
         for idx in range(len(path)-1):
             sl, tl = path[idx], path[idx+1]

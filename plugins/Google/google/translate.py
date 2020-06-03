@@ -24,7 +24,11 @@ def build_query(from_lang, to_lang, *, q):
 def tr(from_lang, to_lang, *, q):
     url = build_query(from_lang, to_lang, q=q)
     hdrs = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:73.0) Gecko/20100101"}
-    data = requests.get(url, headers=hdrs).json()
+    data = requests.get(url, headers=hdrs)
+    if not data:
+        return '', '', []
+
+    data = data.json()
     from_lang = data[2]
     tr_data = data[5]
     if tr_data is None or len(tr_data) == 0:
