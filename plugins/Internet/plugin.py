@@ -388,12 +388,11 @@ class Internet(callbacks.Plugin):
             account = "{}{}".format(verified, account.strip())
 
         tweet_text = tweet_content.find("div", class_="tweet-text")
-        if tweet_text and tweet_text.text.strip() != "":
+        if tweet_text and tweet_text.text.strip():
             content = []
-            imgs = tweet_content.findAll("img")
             has_video = False
             for child in tweet_text.div:
-                text = None
+                text = ""
                 try:
                     if "twitter_external_link" in child.attrs["class"]:
                         url = child.attrs["data-url"]
@@ -401,22 +400,23 @@ class Internet(callbacks.Plugin):
                             has_video = True
                             text = url
                     else:
-                        text = child.text.strip()
+                        text = child.text
                 except AttributeError:
-                    text = child.strip()
+                    text = child
 
+                text = text.strip()
                 if text:
                     content.append(text)
 
             if has_video is False:
-                for img in imgs:
+                for img in tweet_content.findAll("img"):
                     url = img["src"].rsplit(":", 1)[0]
                     content.append(url.strip())
-
+            self.log.info(str(content))
             return name, account, " ".join(content)
 
     def _tweet_format(self, name, account, tweet):
-        tweet = re.sub(r"\n+", " | ", tweet)
+        tweet = re.sub(r"\s*\n+\s*", " | ", tweet)
 
         if name is None and account is None:
             s = "Tweet ({}): {}".format(utils.str.shorten(url, 50), tweet)
