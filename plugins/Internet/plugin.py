@@ -412,7 +412,7 @@ class Internet(callbacks.Plugin):
                 for img in tweet_content.findAll("img"):
                     url = img["src"].rsplit(":", 1)[0]
                     content.append(url.strip())
-            self.log.info(str(content))
+
             return name, account, " ".join(content)
 
     def _tweet_format(self, name, account, tweet):
