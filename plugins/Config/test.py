@@ -39,7 +39,7 @@ def random_string():
 
 class ConfigTestCase(ChannelPluginTestCase):
     # We add utilities so there's something in supybot.plugins.
-    plugins = ('Config', 'User', 'Utilities')
+    plugins = ('Config', 'User', 'Utilities', 'Web')
 
     prefix1 = 'somethingElse!user@host1.tld'
     prefix2 = 'EvensomethingElse!user@host2.tld'
@@ -83,9 +83,28 @@ class ConfigTestCase(ChannelPluginTestCase):
             self.assertNotError('config help %s' % name)
 
     def testSearch(self):
-        self.assertNotError('config search chars')
+        self.assertRegexp(
+            'config search chars', 'supybot.reply.whenAddressedBy.chars')
         self.assertNotError('config channel reply.whenAddressedBy.chars @')
         self.assertNotRegexp('config search chars', self.channel)
+
+    def testSearchHelp(self):
+        self.assertRegexp(
+            'config searchhelp "what prefix characters"',
+            'supybot.reply.whenAddressedBy.chars')
+        self.assertNotError('config channel reply.whenAddressedBy.chars @')
+        self.assertNotRegexp(
+            'config searchhelp "what prefix characters"', self.channel)
+
+    def testSearchValues(self):
+        self.assertResponse(
+            'config searchvalues @@@',
+            'There were no matching configuration variables.')
+        self.assertNotError('config channel reply.whenAddressedBy.strings @@@')
+        self.assertResponse(
+            'config searchvalues @@@',
+            r'supybot.reply.whenAddressedBy.strings.#test and '
+            r'supybot.reply.whenAddressedBy.strings.\:test.#test')
 
     def testDefault(self):
         self.assertNotError('config default '
@@ -176,6 +195,13 @@ class ConfigTestCase(ChannelPluginTestCase):
                 'Global: 0; #test @ test: 1')
 
     def testChannel(self):
+        try:
+            conf.supybot.reply.whenAddressedBy.strings.get(':test').unregister(self.channel)
+            conf.supybot.reply.whenAddressedBy.strings.unregister(':test')
+            conf.supybot.reply.whenAddressedBy.strings.unregister(self.channel)
+        except:
+            pass
+
         self.assertResponse('config reply.whenAddressedBy.strings ^',
                 'The operation succeeded.')
         self.assertResponse('config channel reply.whenAddressedBy.strings @',
@@ -259,6 +285,228 @@ class ConfigTestCase(ChannelPluginTestCase):
 
         # Inherit from #5, which set for #testchan1 on all nets
         self.assertResponse('config channel testnet3 #testchan1 reply.whenAddressedBy.strings', ':')
+
+    def testChannelInheritance(self):
+        try:
+            conf.supybot.reply.whenAddressedBy.strings.get(':test').unregister(self.channel)
+            conf.supybot.reply.whenAddressedBy.strings.unregister(':test')
+            conf.supybot.reply.whenAddressedBy.strings.unregister(self.channel)
+        except:
+            pass
+
+        self.assertResponse('config reply.whenAddressedBy.strings ^',
+            'The operation succeeded.')
+        self.assertResponse('config reply.whenAddressedBy.strings',
+            'Global: ^; #test @ test: ^')
+        self.assertResponse('config channel reply.whenAddressedBy.strings', '^')
+        self.assertTrue(
+            conf.supybot.reply.whenAddressedBy.strings._wasSet)
+        self.assertFalse(
+            conf.supybot.reply.whenAddressedBy.strings.get(self.channel)._wasSet)
+
+        # Parent changes, child follows
+        self.assertResponse('config reply.whenAddressedBy.strings @',
+            'The operation succeeded.')
+        self.assertResponse('config reply.whenAddressedBy.strings',
+            'Global: @; #test @ test: @')
+        self.assertResponse('config channel reply.whenAddressedBy.strings', '@')
+        self.assertTrue(
+            conf.supybot.reply.whenAddressedBy.strings._wasSet)
+        self.assertFalse(
+            conf.supybot.reply.whenAddressedBy.strings.get(self.channel)._wasSet)
+
+        # Child changes, parent keeps its value
+        self.assertResponse('config channel reply.whenAddressedBy.strings $',
+            'The operation succeeded.')
+        self.assertResponse('config reply.whenAddressedBy.strings',
+            'Global: @; #test @ test: $')
+        self.assertResponse('config channel reply.whenAddressedBy.strings', '$')
+        self.assertTrue(
+            conf.supybot.reply.whenAddressedBy.strings._wasSet)
+        self.assertTrue(
+            conf.supybot.reply.whenAddressedBy.strings.get(self.channel)._wasSet)
+
+        # Parent changes, child keeps its value
+        self.assertResponse('config reply.whenAddressedBy.strings .',
+            'The operation succeeded.')
+        self.assertResponse('config reply.whenAddressedBy.strings',
+            'Global: .; #test @ test: $')
+        self.assertResponse('config channel reply.whenAddressedBy.strings', '$')
+        self.assertTrue(
+            conf.supybot.reply.whenAddressedBy.strings._wasSet)
+        self.assertTrue(
+            conf.supybot.reply.whenAddressedBy.strings.get(self.channel)._wasSet)
+
+    def testResetChannel(self):
+        try:
+            conf.supybot.reply.whenAddressedBy.strings.get(':test').unregister(self.channel)
+            conf.supybot.reply.whenAddressedBy.strings.unregister(':test')
+            conf.supybot.reply.whenAddressedBy.strings.unregister(self.channel)
+        except:
+            pass
+
+        self.assertResponse('config reply.whenAddressedBy.strings ^',
+            'The operation succeeded.')
+        self.assertResponse('config reply.whenAddressedBy.strings',
+            'Global: ^; #test @ test: ^')
+        self.assertResponse('config channel reply.whenAddressedBy.strings', '^')
+        self.assertTrue(
+            conf.supybot.reply.whenAddressedBy.strings._wasSet)
+        self.assertFalse(
+            conf.supybot.reply.whenAddressedBy.strings.get(self.channel)._wasSet)
+
+        # Child changes, parent keeps its value
+        self.assertResponse('config channel reply.whenAddressedBy.strings $',
+            'The operation succeeded.')
+        self.assertResponse('config reply.whenAddressedBy.strings',
+            'Global: ^; #test @ test: $')
+        self.assertResponse('config channel reply.whenAddressedBy.strings', '$')
+        self.assertTrue(
+            conf.supybot.reply.whenAddressedBy.strings._wasSet)
+        self.assertTrue(
+            conf.supybot.reply.whenAddressedBy.strings.get(self.channel)._wasSet)
+
+        # Reset child
+        self.assertResponse('config reset channel reply.whenAddressedBy.strings',
+            'The operation succeeded.')
+        self.assertResponse('config reply.whenAddressedBy.strings',
+            'Global: ^; #test @ test: ^')
+        self.assertResponse('config channel reply.whenAddressedBy.strings', '^')
+        self.assertTrue(
+            conf.supybot.reply.whenAddressedBy.strings._wasSet)
+        self.assertFalse(
+            conf.supybot.reply.whenAddressedBy.strings.get(self.channel)._wasSet)
+
+        # Parent changes, child follows
+        self.assertResponse('config reply.whenAddressedBy.strings .',
+            'The operation succeeded.')
+        self.assertResponse('config reply.whenAddressedBy.strings',
+            'Global: .; #test @ test: .')
+        self.assertResponse('config channel reply.whenAddressedBy.strings', '.')
+        self.assertTrue(
+            conf.supybot.reply.whenAddressedBy.strings._wasSet)
+        self.assertFalse(
+            conf.supybot.reply.whenAddressedBy.strings.get(self.channel)._wasSet)
+
+    def testResetNetwork(self):
+        try:
+            conf.supybot.reply.whenAddressedBy.strings.unregister(':test')
+        except:
+            pass
+
+        self.assertResponse('config reply.whenAddressedBy.strings ^',
+            'The operation succeeded.')
+        self.assertResponse('config reply.whenAddressedBy.strings',
+            'Global: ^; #test @ test: ^')
+        self.assertResponse('config network reply.whenAddressedBy.strings', '^')
+        self.assertTrue(
+            conf.supybot.reply.whenAddressedBy.strings._wasSet)
+        self.assertFalse(
+            conf.supybot.reply.whenAddressedBy.strings.get(':test')._wasSet)
+
+        # Child changes, parent keeps its value
+        self.assertResponse('config network reply.whenAddressedBy.strings $',
+            'The operation succeeded.')
+        self.assertResponse('config reply.whenAddressedBy.strings',
+            'Global: ^; #test @ test: $')
+        self.assertResponse('config network reply.whenAddressedBy.strings', '$')
+        self.assertTrue(
+            conf.supybot.reply.whenAddressedBy.strings._wasSet)
+        self.assertTrue(
+            conf.supybot.reply.whenAddressedBy.strings.get(':test')._wasSet)
+
+        # Reset child
+        self.assertResponse('config reset network reply.whenAddressedBy.strings',
+            'The operation succeeded.')
+        self.assertResponse('config reply.whenAddressedBy.strings',
+            'Global: ^; #test @ test: ^')
+        self.assertResponse('config network reply.whenAddressedBy.strings', '^')
+        self.assertTrue(
+            conf.supybot.reply.whenAddressedBy.strings._wasSet)
+        self.assertFalse(
+            conf.supybot.reply.whenAddressedBy.strings.get(':test')._wasSet)
+
+        # Parent changes, child follows
+        self.assertResponse('config reply.whenAddressedBy.strings .',
+            'The operation succeeded.')
+        self.assertResponse('config reply.whenAddressedBy.strings',
+            'Global: .; #test @ test: .')
+        self.assertResponse('config network reply.whenAddressedBy.strings', '.')
+        self.assertTrue(
+            conf.supybot.reply.whenAddressedBy.strings._wasSet)
+        self.assertFalse(
+            conf.supybot.reply.whenAddressedBy.strings.get(':test')._wasSet)
+
+    def testResetRegexpChannel(self):
+        """Specifically tests resetting a Regexp value, as they have an extra
+        internal state that needs to be reset; see the comment in plugin.py"""
+        self.assertResponse(
+            'config plugins.Web.nonSnarfingRegexp',
+            'Global:  ; #test @ test:  '
+        )
+        self.assertResponse(
+            'config plugins.Web.nonSnarfingRegexp m/foo/',
+            'The operation succeeded.'
+        )
+        self.assertResponse(
+            'config channel plugins.Web.nonSnarfingRegexp m/bar/',
+            'The operation succeeded.'
+        )
+        self.assertResponse(
+            'config plugins.Web.nonSnarfingRegexp',
+            'Global: m/foo/; #test @ test: m/bar/'
+        )
+        self.assertResponse(
+            'config reset channel plugins.Web.nonSnarfingRegexp',
+            'The operation succeeded.'
+        )
+        self.assertResponse('config plugins.Web.nonSnarfingRegexp',
+            'Global: m/foo/; #test @ test: m/foo/'
+        )
+        self.assertResponse(
+            'config plugins.Web.nonSnarfingRegexp ""',
+            'The operation succeeded.'
+        )
+        self.assertResponse(
+            'config plugins.Web.nonSnarfingRegexp',
+            'Global:  ; #test @ test:  '
+        )
+
+    def testResetRegexpNetwork(self):
+        """Specifically tests resetting a Regexp value, as they have an extra
+        internal state that needs to be reset; see the comment in plugin.py"""
+        self.assertResponse(
+            'config plugins.Web.nonSnarfingRegexp',
+            'Global:  ; #test @ test:  '
+        )
+        self.assertResponse(
+            'config plugins.Web.nonSnarfingRegexp m/foo/',
+            'The operation succeeded.'
+        )
+        self.assertResponse(
+            'config network plugins.Web.nonSnarfingRegexp m/bar/',
+            'The operation succeeded.'
+        )
+        self.assertResponse(
+            'config plugins.Web.nonSnarfingRegexp',
+            'Global: m/foo/; #test @ test: m/bar/'
+        )
+        self.assertResponse(
+            'config reset network plugins.Web.nonSnarfingRegexp',
+            'The operation succeeded.'
+        )
+        self.assertResponse('config plugins.Web.nonSnarfingRegexp',
+            'Global: m/foo/; #test @ test: m/foo/'
+        )
+        self.assertResponse(
+            'config plugins.Web.nonSnarfingRegexp ""',
+            'The operation succeeded.'
+        )
+        self.assertResponse(
+            'config plugins.Web.nonSnarfingRegexp',
+            'Global:  ; #test @ test:  '
+        )
+
 
 
 # vim:set shiftwidth=4 softtabstop=4 expandtab textwidth=79:

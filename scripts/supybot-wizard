@@ -534,9 +534,28 @@ def main():
                   by a comma. For example:
                   #supybot-bots #mychannel,mykey #otherchannel""");
         while True:
-            channels = something('What channels?', default=defaultChannels)
+            channels_input = something('What channels?', default=defaultChannels)
+            channels = []
+            error = False
+            for channel in channels_input.split():
+                L = channel.split(',')
+                if len(L) == 0:
+                    continue
+                elif len(L) == 1:
+                    (channel,) = L
+                    channels.append(channel)
+                elif len(L) == 2:
+                    (channel, key) = L
+                    channels.append(channel)
+                    network.channels.key.get(channel).setValue(key)
+                else:
+                    output("""Too many commas in %s.""" % channel)
+                    error = True
+                    break
+            if error:
+                break
             try:
-                network.channels.set(channels)
+                network.channels.set(' '.join(channels))
                 break
             except registry.InvalidRegistryValue as e:
                 output(""""%s" is an invalid IRC channel.  Be sure to prefix
@@ -634,14 +653,14 @@ def main():
                 if yn('Do you want to remove its owner capability?',
                       default=False):
                     u.removeCapability('owner')
-                    ircdb.users.setUser(id, u)
+                    ircdb.users.setUser(u)
             else:
                 output("""That user already exists, but doesn't have owner
                 capabilities.""")
                 if yn('Do you want to add to it owner capabilities?',
                       default=False):
                     u.addCapability('owner')
-                    ircdb.users.setUser(id, u)
+                    ircdb.users.setUser(u)
         except KeyError:
             password = getpass('What should the owner\'s password be?')
             u = ircdb.users.newUser()

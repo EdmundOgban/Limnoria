@@ -41,6 +41,7 @@ from __future__ import print_function
 import re
 import sys
 import time
+import uuid
 import base64
 import random
 import string
@@ -696,6 +697,7 @@ def unDccIP(i):
 
 class IrcString(str):
     """This class does case-insensitive comparison and hashing of nicks."""
+    __slots__ = ('lowered',)
     def __new__(cls, s=''):
         x = super(IrcString, cls).__new__(cls, s)
         x.lowered = str(toLower(x))
@@ -716,12 +718,14 @@ class IrcString(str):
 
 class IrcDict(utils.InsensitivePreservingDict):
     """Subclass of dict to make key comparison IRC-case insensitive."""
+    __slots__ = ()
     def key(self, s):
         if s is not None:
             s = toLower(s)
         return s
 
 class CallableValueIrcDict(IrcDict):
+    __slots__ = ()
     def __getitem__(self, k):
         v = super(IrcDict, self).__getitem__(k)
         if callable(v):
@@ -730,6 +734,7 @@ class CallableValueIrcDict(IrcDict):
 
 class IrcSet(utils.NormalizingSet):
     """A sets.Set using IrcStrings instead of regular strings."""
+    __slots__ = ()
     def normalize(self, s):
         return IrcString(s)
 
@@ -957,6 +962,46 @@ class AuthenticateDecoder(object):
     def get(self):
         assert self.ready
         return base64.b64decode(b''.join(self.chunks))
+
+
+def parseStsPolicy(logger, policy, parseDuration):
+    parsed_policy = {}
+    for kv in policy.split(','):
+        if '=' in kv:
+            (k, v) = kv.split('=', 1)
+            parsed_policy[k] = v
+        else:
+            parsed_policy[kv] = None
+
+    for key in ('port', 'duration'):
+        if key == 'duration' and not parseDuration:
+            if key in parsed_policy:
+                del parsed_policy[key]
+            continue
+        if parsed_policy.get(key) is None:
+            logger.error('Missing or empty "%s" key in STS policy.'
+                         'Aborting connection.', key)
+            return None
+        try:
+            parsed_policy[key] = int(parsed_policy[key])
+        except ValueError:
+            logger.error('Expected integer as value for key "%s" in STS '
+                         'policy, got %r instead. Aborting connection.',
+                         key, parsed_policy[key])
+            return None
+
+    return parsed_policy
+
+
+def makeLabel():
+    """Returns a unique label for outgoing message tags.
+
+    Unicity is not guaranteed across restarts.
+    Returns should be handled as opaque strings, using only equality.
+
+    This is used for <https://ircv3.net/specs/extensions/labeled-response>
+    """
+    return str(uuid.uuid4())
 
 
 numerics = {

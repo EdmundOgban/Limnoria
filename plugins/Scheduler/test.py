@@ -41,7 +41,9 @@ class SchedulerTestCase(ChannelPluginTestCase):
     def testAddRemove(self):
         self.assertRegexp('scheduler list', 'no.*commands')
         m = self.assertNotError('scheduler add 5 echo testAddRemove')
-        self.assertRegexp('scheduler list', 'echo testAddRemove')
+        self.assertResponse(
+            'scheduler list',
+            '1 (in 4 seconds): "echo testAddRemove"')
         timeFastForward(2)
         self.assertNoResponse(' ', timeout=1)
         timeFastForward(2)
@@ -72,12 +74,30 @@ class SchedulerTestCase(ChannelPluginTestCase):
         timeFastForward(5)
         self.assertNoResponse(' ', timeout=1)
 
+    def testRemind(self):
+        self.assertNotError('scheduler remind 5 testRemind')
+        self.assertResponse(
+            'scheduler list',
+            '3 (in 4 seconds): "testRemind"')
+        timeFastForward(3)
+        self.assertNoResponse(' ', timeout=1)
+        timeFastForward(3)
+        self.assertResponse(' ', 'Reminder: testRemind')
+        timeFastForward(5)
+        self.assertNoResponse(' ', timeout=1)
+        self.assertResponse(
+            'scheduler list', 'There are currently no scheduled commands.')
+
+
     def testRepeat(self):
         self.assertRegexp('scheduler repeat repeater 5 echo testRepeat',
             'testRepeat')
         timeFastForward(5)
         self.assertResponse(' ', 'testRepeat')
-        self.assertResponse('scheduler list', 'repeater: "echo testRepeat"')
+        self.assertResponse(
+            'scheduler list',
+            'repeater (every 5 seconds, next run in 4 seconds): '
+            '"echo testRepeat"')
         timeFastForward(3)
         self.assertNoResponse(' ', timeout=1)
         timeFastForward(2)
@@ -86,6 +106,17 @@ class SchedulerTestCase(ChannelPluginTestCase):
         self.assertRegexp('scheduler list', 'no.*commands')
         timeFastForward(5)
         self.assertNoResponse(' ', timeout=1)
+
+    def testRepeatDelay(self):
+        self.assertNoResponse(
+            'scheduler repeat --delay 5 repeater 20 echo testRepeat',
+            timeout=1)
+        timeFastForward(5)
+        self.assertResponse(' ', 'testRepeat', timeout=1)
+        timeFastForward(17)
+        self.assertNoResponse(' ', timeout=1)
+        timeFastForward(5)
+        self.assertResponse(' ', 'testRepeat', timeout=1)
 
     def testRepeatWorksWithNestedCommands(self):
         self.assertRegexp('scheduler repeat foo 5 "echo foo [echo nested]"',
@@ -106,6 +137,55 @@ class SchedulerTestCase(ChannelPluginTestCase):
     def testRepeatDisallowsDuplicateNames(self):
         self.assertNotError('scheduler repeat foo 5 "echo foo"')
         self.assertError('scheduler repeat foo 5 "echo another foo fails"')
+
+    def testSinglePersistence(self):
+        self.assertRegexp(
+            'scheduler add 10 echo testSingle',
+            '^The operation succeeded')
+
+        self.assertNotError('unload Scheduler')
+        schedule.schedule.reset()
+        timeFastForward(20)
+        self.assertNoResponse(' ', timeout=1)
+
+        self.assertNotError('load Scheduler')
+        self.assertResponse(' ', 'testSingle')
+
+    def testRepeatPersistence(self):
+        self.assertRegexp(
+            'scheduler repeat repeater 20 echo testRepeat',
+            'testRepeat')
+
+        self.assertNotError('unload Scheduler')
+        schedule.schedule.reset()
+        timeFastForward(30)
+        self.assertNoResponse(' ', timeout=1)
+
+        self.assertNotError('load Scheduler')
+        self.assertNoResponse(' ', timeout=1) # T+30 to T+31
+        timeFastForward(5)
+        self.assertNoResponse(' ', timeout=1) # T+36 to T+37
+        timeFastForward(5)
+        self.assertResponse(' ', 'testRepeat', timeout=1) # T+42
+
+        timeFastForward(15)
+        self.assertNoResponse(' ', timeout=1) # T+57 to T+58
+        timeFastForward(5)
+        self.assertResponse(' ', 'testRepeat', timeout=1) # T+64
+
+        self.assertNotError('unload Scheduler')
+        schedule.schedule.reset()
+        timeFastForward(20)
+        self.assertNoResponse(' ', timeout=1)
+
+        self.assertNotError('load Scheduler')
+        self.assertNoResponse(' ', timeout=1) # T+85 to T+86
+        timeFastForward(10)
+        self.assertNoResponse(' ', timeout=1) # T+95 to T+96
+        timeFastForward(10)
+        self.assertResponse(' ', 'testRepeat', timeout=1) # T+106
+
+
 
 
 # vim:set shiftwidth=4 softtabstop=4 expandtab textwidth=79:

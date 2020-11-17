@@ -32,6 +32,7 @@ from supybot.test import *
 import time
 import copy
 import pickle
+import itertools
 
 import supybot.conf as conf
 import supybot.ircmsgs as ircmsgs
@@ -119,6 +120,20 @@ class IrcMsgTestCase(SupyTestCase):
         self.assertEqual(msg2.command, 'PRIVMSG')
         self.assertEqual(msg2.args, msg.args)
 
+    def testSplit(self):
+        msg = ircmsgs.IrcMsg(s=':foo    bar      baz   :qux')
+        self.assertEqual(msg.prefix, 'foo')
+        self.assertEqual(msg.command, 'bar')
+        self.assertEqual(msg.args, ('baz', 'qux'))
+
+        msg = ircmsgs.IrcMsg(s=':foo\tbar baz')
+        self.assertEqual(msg.prefix, 'foo\tbar')
+        self.assertEqual(msg.command, 'baz')
+
+        msg = ircmsgs.IrcMsg(s=':foo bar\tbaz')
+        self.assertEqual(msg.prefix, 'foo')
+        self.assertEqual(msg.command, 'bar\tbaz')
+
     def testMalformedIrcMsgRaised(self):
         self.assertRaises(ircmsgs.MalformedIrcMsg, ircmsgs.IrcMsg, ':foo')
         self.assertRaises(ircmsgs.MalformedIrcMsg, ircmsgs.IrcMsg,
@@ -135,8 +150,8 @@ class IrcMsgTestCase(SupyTestCase):
         self.assertEqual(m.repliedTo, 12)
 
     def testServerTags(self):
-        s = '@aaa=b\\:bb;ccc;example.com/ddd=ee\\\\se ' \
-            ':nick!ident@host.com PRIVMSG me :Hello'
+        s = r'@aaa=b\:bb;ccc;example.com/ddd=ee\\se ' \
+            r':nick!ident@host.com PRIVMSG me :Hello'
         m = ircmsgs.IrcMsg(s)
         self.assertEqual(m.server_tags, {
             'aaa': 'b;bb',
@@ -146,9 +161,35 @@ class IrcMsgTestCase(SupyTestCase):
         self.assertEqual(m.command, 'PRIVMSG')
         self.assertEqual(m.args, ('me', 'Hello'))
         self.assertEqual(str(m), s + '\n')
+        m._str = None  # Clear the cache (set before parsing)
 
-        s = '@foo=;bar=baz;qux= ' \
-            ':nick!ident@host.com PRIVMSG me :Hello'
+        tag_set = [r'aaa=b\:bb', r'ccc', r'example.com/ddd=ee\\se']
+        expected = [
+            '@' + ';'.join(tags)
+            + ' :nick!ident@host.com PRIVMSG me :Hello\r\n'
+            for tags in itertools.permutations(tag_set)]
+        self.assertIn(str(m), expected)
+
+        # bar\1 is equivalent to baz1
+        s = r'@foo=;bar=baz\1;qux= ' \
+            r':nick!ident@host.com PRIVMSG me :Hello'
+        m = ircmsgs.IrcMsg(s)
+        self.assertEqual(m.server_tags, {
+            'foo': None,
+            'bar': 'baz1',
+            'qux': None})
+
+        # bar\ is equivalent to baz
+        s = r'@foo=;bar=baz\;qux= ' \
+            r':nick!ident@host.com PRIVMSG me :Hello'
+        m = ircmsgs.IrcMsg(s)
+        self.assertEqual(m.server_tags, {
+            'foo': None,
+            'bar': 'baz',
+            'qux': None})
+
+        s = r'@foo=;bar=baz;qux= ' \
+            r':nick!ident@host.com PRIVMSG me :Hello'
         m = ircmsgs.IrcMsg(s)
         self.assertEqual(m.server_tags, {
             'foo': None,

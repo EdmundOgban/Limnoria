@@ -32,6 +32,7 @@ Data structures for Python.
 """
 
 import time
+import threading
 import collections.abc
 
 
@@ -306,6 +307,8 @@ class smallqueue(list):
 
 
 class TimeoutQueue(object):
+    """A queue whose elements are dropped after a certain time."""
+
     __slots__ = ('queue', 'timeout')
     def __init__(self, timeout, queue=None):
         if queue is None:
@@ -446,7 +449,7 @@ class CacheDict(collections.abc.MutableMapping):
 
     def keys(self):
         return self.d.keys()
-    
+
     def items(self):
         return self.d.items()
 
@@ -455,6 +458,158 @@ class CacheDict(collections.abc.MutableMapping):
 
     def __len__(self):
         return len(self.d)
+
+
+class ExpiringDict(collections.abc.MutableMapping):
+    """An efficient dictionary that MAY drop its items when they are too old.
+    For guaranteed expiry, use TimeoutDict.
+
+    Currently, this is implemented by internally alternating two "generation"
+    dicts, which are dropped after a certain time."""
+    __slots__ = ('_lock', 'old_gen', 'new_gen', 'timeout', '_last_switch')
+    __synchronized__ = ('_expire_generations',)
+
+    def __init__(self, timeout, items=None):
+        self._lock = threading.Lock()
+        self.old_gen = {}
+        self.new_gen = {} if items is None else items
+        self.timeout = timeout
+        self._last_switch = time.time()
+
+    def __reduce__(self):
+        return (self.__class__, (self.timeout, dict(self)))
+
+    def __repr__(self):
+        return 'ExpiringDict(%s, %r)' % (self.timeout, dict(self))
+
+    def __getitem__(self, key):
+        try:
+            # Check the new_gen first, as it contains the most recent
+            # insertion.
+            # We must also check them in this order to be thread-safe when
+            # _expire_generations() runs.
+            return self.new_gen[key]
+        except KeyError:
+            try:
+                return self.old_gen[key]
+            except KeyError:
+                raise KeyError(key) from None
+
+    def __contains__(self, key):
+        # the two clauses must be in this order to be thread-safe when
+        # _expire_generations() runs.
+        return key in self.new_gen or key in self.old_gen
+
+    def __setitem__(self, key, value):
+        self._expireGenerations()
+        self.new_gen[key] = value
+
+    def _expireGenerations(self):
+        with self._lock:
+            now = time.time()
+            if self._last_switch + self.timeout < now:
+                # We last wrote to self.old_gen a long time ago
+                # (ie. more than self.timeout); let's drop the old_gen and
+                # make new_gen become the old_gen
+                # self.old_gen must be written before self.new_gen for
+                # __getitem__ and __contains__ to be able to run concurrently
+                # to this function.
+                self.old_gen = self.new_gen
+                self.new_gen = {}
+                self._last_switch = now
+
+    def clear(self):
+        self.old_gen.clear()
+        self.new_gen.clear()
+
+    def __delitem__(self, key):
+        self.old_gen.pop(key, None)
+        self.new_gen.pop(key, None)
+
+    def __iter__(self):
+        # order matters
+        keys = set(self.new_gen.keys()) | set(self.old_gen.keys())
+        return iter(keys)
+
+    def __len__(self):
+        # order matters
+        return len(set(self.new_gen.keys()) | set(self.old_gen.keys()))
+
+
+class TimeoutDict: # Don't inherit from MutableMapping: not thread-safe
+    """A dictionary that drops its items after they have been in the dict
+    for a certain time.
+
+    Use ExpiringDict for a more efficient implementation that doesn't require
+    guaranteed timeout.
+    """
+    __slots__ = ('_lock', 'd', 'timeout')
+    __synchronized__ = ('_expire_generations',)
+
+    def __init__(self, timeout, items=None):
+        expiry = time.time() + timeout
+        self._lock = threading.Lock()
+        self.d = {k: (expiry, v) for (k, v) in (items or {}).items()}
+        self.timeout = timeout
+
+    def __reduce__(self):
+        return (self.__class__, (self.timeout, dict(self)))
+
+    def __repr__(self):
+        return 'TimeoutDict(%s, %r)' % (self.timeout, dict(self))
+
+    def __getitem__(self, key):
+        with self._lock:
+            try:
+                (expiry, value) = self.d[key]
+                if expiry < time.time():
+                    del self.d[key]
+                    raise KeyError
+            except KeyError:
+                raise KeyError(key) from None
+
+            return value
+
+    def __setitem__(self, key, value):
+        with self._lock:
+            self.d[key] = (time.time() + self.timeout, value)
+
+    def clear(self):
+        with self._lock:
+            self.d.clear()
+
+    def __delitem__(self, key):
+        with self._lock:
+            del self.d[key]
+
+    def _items(self):
+        now = time.time()
+        with self._lock:
+            return [
+                (k, v) for (k, (expiry, v)) in self.d.items()
+                if expiry >= now]
+
+    def keys(self):
+        return [k for (k, v) in self._items()]
+
+    def values(self):
+        return [v for (k, v) in self._items()]
+
+    def items(self):
+        return self._items()
+
+    def __iter__(self):
+        return (k for (k, v) in self._items())
+
+    def __len__(self):
+        return len(self._items())
+
+    def __eq__(self, other):
+        return self._items() == list(other.items())
+
+    def __ne__(self, other):
+        return not (self == other)
+
 
 class TruncatableSet(collections.abc.MutableSet):
     """A set that keeps track of the order of inserted elements so

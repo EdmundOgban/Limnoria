@@ -58,7 +58,15 @@ else:
 
 def _addressed(irc, msg, prefixChars=None, nicks=None,
               prefixStrings=None, whenAddressedByNick=None,
-              whenAddressedByNickAtEnd=None):
+              whenAddressedByNickAtEnd=None, payload=None):
+    """Determines whether this message is a command to the bot (because of a
+    prefix char/string, or because the bot's nick is used as prefix, or because
+    it's a private message, etc.).
+    Returns the actual content of the command (ie. the content of the message,
+    stripped of the prefix that was used to determine if it's addressed).
+
+    If 'payload' is not None, its value is used instead of msg.args[1] as the
+    content of the message."""
     if isinstance(irc, str):
         warnings.warn(
             "callbacks.addressed's first argument should now be be the Irc "
@@ -78,9 +86,10 @@ def _addressed(irc, msg, prefixChars=None, nicks=None,
                 payload = payload[len(prefixString):].lstrip()
         return payload
 
-    assert msg.command == 'PRIVMSG'
+    assert msg.command in ('PRIVMSG', 'TAGMSG')
     target = msg.channel or msg.args[0]
-    payload = msg.args[1]
+    if not payload:
+        payload = msg.args[1]
     if not payload:
         return ''
     if prefixChars is None:
@@ -243,6 +252,14 @@ def _makeReply(irc, msg, s,
     # Finally, we'll return the actual message.
     ret = msgmaker(target, s)
     ret.tag('inReplyTo', msg)
+    if 'msgid' in msg.server_tags \
+            and conf.supybot.protocols.irc.experimentalExtensions() \
+            and 'message-tags' in irc.state.capabilities_ack:
+        # In theory, msgid being in server_tags implies message-tags was
+        # negotiated, but the +reply spec requires it explicitly. Plus, there's
+        # no harm in doing this extra check, in case a plugin is replying
+        # across network (as it may happen with '@network command').
+        ret.server_tags['+draft/reply'] = msg.server_tags['msgid']
     return ret
 
 def error(*args, **kwargs):
@@ -779,14 +796,18 @@ class NestedCommandsIrcProxy(ReplyIrcProxy):
         (a list of strings) and the plugins for which it was a command."""
         assert isinstance(args, list)
         args = list(map(canonicalName, args))
+
+        # Find a list maxL such that maxL = args[0:n] for the largest n
+        # possible such that maxL is a command.
         cbs = []
         maxL = []
         for cb in self.irc.callbacks:
             if not hasattr(cb, 'getCommand'):
                 continue
             L = cb.getCommand(args)
-            #log.debug('%s.getCommand(%r) returned %r', cb.name(), args, L)
             if L and L >= maxL:
+                # equivalent to "L and len(L) >= len(maxL)", because L and maxL
+                # are both "prefixes" of the same list.
                 maxL = L
                 cbs.append((cb, L))
                 assert isinstance(L, list), \
@@ -795,7 +816,11 @@ class NestedCommandsIrcProxy(ReplyIrcProxy):
                        'getCommand must return a prefix of the args given.  ' \
                        '(args given: %r, returned: %r)' % (args, L)
         log.debug('findCallbacksForArgs: %r', cbs)
+
+        # Filter out all the entries in cbs that are smaller than maxL (ie.
+        # maxL contains them, with more items at the end.)
         cbs = [cb for (cb, L) in cbs if L == maxL]
+
         if len(maxL) == 1:
             # Special case: one arg determines the callback.  In this case, we
             # have to check, in order:
@@ -1436,14 +1461,15 @@ class PluginMixin(BasePlugin, irclib.IrcCallback):
                 noIgnore = self.noIgnore(irc, msg)
             else:
                 noIgnore = self.noIgnore
-            if noIgnore or \
-               not ircdb.checkIgnored(msg.prefix, msg.channel) or \
-               not ircutils.isUserHostmask(msg.prefix):  # Some services impl.
+            if (noIgnore or
+               not msg.prefix or  # simulated echo message
+               not ircutils.isUserHostmask(msg.prefix) or # Some services impl.
+               not ircdb.checkIgnored(msg.prefix, msg.channel)):
                 self.__parent.__call__(irc, msg)
         else:
             self.__parent.__call__(irc, msg)
 
-    def registryValue(self, name, channel=None, network=None, value=True):
+    def registryValue(self, name, channel=None, network=None, *, value=True):
         if isinstance(network, bool):
             # Network-unaware plugin that uses 'value' as a positional
             # argument.

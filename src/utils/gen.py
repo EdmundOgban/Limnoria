@@ -203,12 +203,9 @@ def safeEval(s, namespace=None):
         else:
             return False
     if checkNode(node):
-        if namespace is None:
-            return eval(s, namespace, namespace)
-        else:
-            # Probably equivalent to eval() because checkNode(node) is True,
-            # but it's an extra security.
-            return ast.literal_eval(node)
+        # Probably equivalent to eval() because checkNode(node) is True,
+        # but it's an extra security.
+        return ast.literal_eval(node)
     else:
         raise ValueError(format('Unsafe string: %q', s))
 
@@ -223,6 +220,7 @@ def exnToString(e):
 class IterableMap(object):
     """Define .items() in a class and subclass this to get the other iters.
     """
+    __slots__ = ()
     def items(self):
         if minisix.PY3 and hasattr(self, 'iteritems'):
             # For old plugins
@@ -256,6 +254,7 @@ class IterableMap(object):
 
 
 class InsensitivePreservingDict(collections.abc.MutableMapping):
+    __slots__ = ('data',)
     def key(self, s):
         """Override this if you wish."""
         if s is not None:
@@ -311,6 +310,7 @@ class InsensitivePreservingDict(collections.abc.MutableMapping):
 
 
 class NormalizingSet(set):
+    __slots__ = ()
     def __init__(self, iterable=()):
         iterable = list(map(self.normalize, iterable))
         super(NormalizingSet, self).__init__(iterable)

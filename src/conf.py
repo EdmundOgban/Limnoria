@@ -32,6 +32,7 @@ import os
 import sys
 import time
 import socket
+import random
 
 from . import ircutils, registry, utils
 from .utils import minisix
@@ -273,15 +274,17 @@ class Servers(registry.SpaceSeparatedListOfStrings):
         return s
 
     def convert(self, s):
+        from .drivers import Server
+
         s = self.normalize(s)
-        (server, port) = s.rsplit(':', 1)
+        (hostname, port) = s.rsplit(':', 1)
 
         # support for `[ipv6]:port` format
-        if server.startswith("[") and server.endswith("]"):
-            server = server[1:-1]
+        if hostname.startswith("[") and hostname.endswith("]"):
+            hostname = hostname[1:-1]
 
         port = int(port)
-        return (server, port)
+        return Server(hostname, port, force_tls_verification=False)
 
     def __call__(self):
         L = registry.SpaceSeparatedListOfStrings.__call__(self)
@@ -727,6 +730,17 @@ registerChannelValue(supybot.replies, 'possibleBug',
     <https://github.com/ProgVal/Limnoria/issues>."""),
     _("""Determines what message the bot sends when it thinks you've
     encountered a bug that the developers don't know about.""")))
+
+class DatabaseRecordTemplatedString(registry.TemplatedString):
+    requiredTemplates = ['text']
+
+registerChannelValue(supybot.replies, 'databaseRecord',
+    DatabaseRecordTemplatedString(_('$Type #$id: $text (added by $username at $at)'),
+    _("""Format used by generic database plugins (Lart, Dunno, Prase, Success,
+    Quote, ...) to show an entry. You can use the following variables:
+    $type/$types/$Type/$Types (plugin name and variants), $id, $text,
+    $at (creation time), $userid/$username/$nick (author).""")))
+
 ###
 # End supybot.replies.
 ###
@@ -884,13 +898,11 @@ registerGlobalValue(supybot.drivers, 'poll',
 
 class ValidDriverModule(registry.OnlySomeStrings):
     __slots__ = ()
-    validStrings = ('default', 'Socket', 'Twisted', 'Telegram')
+    validStrings = ('default', 'Socket', 'Telegram')
 
 registerNetworkValue(supybot.drivers, 'module',
     ValidDriverModule('default', _("""Determines what driver module the 
-    bot will use. The default is Socket which is simple and stable 
-    and supports SSL. Twisted doesn't work if the IRC server which 
-    you are connecting to has IPv6 (most of them do).""")))
+    bot will use. Current, the only (and default) driver is Socket.""")))
 
 registerGlobalValue(supybot.drivers, 'maxReconnectWait',
     registry.PositiveFloat(300.0, _("""Determines the maximum time the bot will
@@ -981,8 +993,10 @@ registerGlobalValue(supybot.directories, 'plugins',
     [config supybot.directories.plugins], newPluginDirectory'.""")))
 
 registerGlobalValue(supybot, 'plugins',
-    registry.SpaceSeparatedSetOfStrings([], _("""Determines what plugins will
-    be loaded."""), orderAlphabetically=True))
+    registry.SpaceSeparatedSetOfStrings([], _("""List of all plugins that were
+    ever loaded. Currently has no effect whatsoever. You probably want to use
+    the 'load' or 'unload' commands, or edit supybot.plugins.<pluginname>
+    instead of this."""), orderAlphabetically=True))
 registerGlobalValue(supybot.plugins, 'alwaysLoadImportant',
     registry.Boolean(True, _("""Determines whether the bot will always load
     important plugins (Admin, Channel, Config, Misc, Owner, and User)
@@ -1043,6 +1057,12 @@ registerGroup(supybot.databases, 'channels')
 registerGlobalValue(supybot.databases.channels, 'filename',
     registry.String('channels.conf', _("""Determines what filename will be used
     for the channels database.  This file will go into the directory specified
+    by the supybot.directories.conf variable.""")))
+
+registerGroup(supybot.databases, 'networks')
+registerGlobalValue(supybot.databases.networks, 'filename',
+    registry.String('networks.conf', _("""Determines what filename will be used
+    for the networks database.  This file will go into the directory specified
     by the supybot.directories.conf variable.""")))
 
 # TODO This will need to do more in the future (such as making sure link.allow
@@ -1217,6 +1237,13 @@ registerGlobalValue(supybot.protocols.irc, 'strictRfc',
     requires you to message a nick such as services@this.network.server
     then you you should set this to False.""")))
 
+registerGlobalValue(supybot.protocols.irc, 'experimentalExtensions',
+    registry.Boolean(False, _("""Determines whether the bot will enable
+    draft/experimental extensions of the IRC protocol. Setting this to True
+    may break your bot at any time without warning and/or break your
+    configuration irreversibly. So keep it False unless you know what you are
+    doing.""")))
+
 registerGlobalValue(supybot.protocols.irc, 'certfile',
     registry.String('', _("""Determines what certificate file (if any) the bot
     will use connect with SSL sockets by default.""")))
@@ -1308,13 +1335,19 @@ def defaultHttpHeaders(network, channel):
     try:
         language = supybot.protocols.http.requestLanguage.getSpecific(
                 network, channel)()
+        agent = supybot.protocols.http.userAgents.getSpecific(
+                network, channel)()
     except registry.NonExistentRegistryEntry:
-        pass # Starting up; language will be set by HttpRequestLanguage later
+        pass # Starting up; headers will be set by HttpRequestLanguage/UserAgents later
     else:
         if language:
             headers['Accept-Language'] = language
         elif 'Accept-Language' in headers:
             del headers['Accept-Language']
+        if agent:
+            agent = random.choice(agent).strip()
+            if agent:
+                headers['User-agent'] = agent
     return headers
 
 class HttpRequestLanguage(registry.String):
@@ -1324,11 +1357,22 @@ class HttpRequestLanguage(registry.String):
         super(HttpRequestLanguage, self).setValue(v)
         utils.web.defaultHeaders = defaultHttpHeaders(None, None)
 
+class HttpUserAgents(registry.CommaSeparatedListOfStrings):
+    """Must be a valid HTTP User-Agent value."""
+    __slots__ = ()
+    def setValue(self, v):
+        super(HttpUserAgents, self).setValue(v)
+        utils.web.defaultHeaders = defaultHttpHeaders(None, None)
+
 registerChannelValue(supybot.protocols.http, 'requestLanguage',
     HttpRequestLanguage('', _("""If set, the Accept-Language HTTP header will be set to this
     value for requests. Useful for overriding the auto-detected language based on
     the server's location.""")))
 
+
+registerChannelValue(supybot.protocols.http, 'userAgents',
+    HttpUserAgents([], _("""If set, the User-Agent HTTP header will be set to a randomly
+    selected value from this comma-separated list of strings for requests.""")))
 
 ###
 # supybot.protocols.ssl
@@ -1337,7 +1381,9 @@ registerGroup(supybot.protocols, 'ssl')
 registerGlobalValue(supybot.protocols.ssl, 'verifyCertificates',
     registry.Boolean(False, _("""Determines whether server certificates
     will be verified, which checks whether the server certificate is signed
-    by a known certificate authority, and aborts the connection if it is not.""")))
+    by a known certificate authority, and aborts the connection if it is not.
+    This is assumed to be True of serverFingerprints or authorityCertificate
+    is set.""")))
 
 
 ###
@@ -1379,6 +1425,11 @@ registerGlobalValue(supybot.servers.http, 'keepAlive',
 registerGlobalValue(supybot.servers.http, 'favicon',
     registry.String('', _("""Determines the path of the file served as
     favicon to browsers.""")))
+registerGlobalValue(supybot.servers.http, 'publicUrl',
+    registry.String('', _("""Determines the public URL of the server.
+    By default it is http://<hostname>:<port>/, but you will want to change
+    this if there is a reverse proxy (nginx, apache, ...) in front of
+    the bot.""")))
 
 
 ###

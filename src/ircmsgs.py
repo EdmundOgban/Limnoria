@@ -36,6 +36,7 @@ object (which, as you'll read later, is quite...full-featured :))
 """
 
 import re
+import sys
 import time
 import base64
 import datetime
@@ -64,14 +65,25 @@ SERVER_TAG_ESCAPE = [
     ]
 escape_server_tag_value = utils.str.MultipleReplacer(
         dict(SERVER_TAG_ESCAPE))
-unescape_server_tag_value = utils.str.MultipleReplacer(
-        dict(map(lambda x:(x[1],x[0]), SERVER_TAG_ESCAPE)))
 
-def parse_server_tags(s):
+_server_tag_unescape = {k: v for (v, k) in SERVER_TAG_ESCAPE}
+_escape_sequence_pattern = re.compile(r'\\.?')
+def _unescape_replacer(m):
+    escape_sequence = m.group(0)
+    unescaped = _server_tag_unescape.get(escape_sequence)
+    if unescaped is None:
+        # Matches both a lone \ at the end and a \ followed by an "invalid"
+        # character. In both cases, the \ must be dropped.
+        return escape_sequence[1:]
+    return unescaped
+def unescape_server_tag_value(s):
+    return _escape_sequence_pattern.sub(_unescape_replacer, s)
+
+def _parse_server_tags(s):
     server_tags = {}
     for tag in s.split(';'):
         if '=' not in tag:
-            server_tags[tag] = None
+            server_tags[sys.intern(tag)] = None
         else:
             (key, value) = tag.split('=', 1)
             value = unescape_server_tag_value(value)
@@ -79,9 +91,9 @@ def parse_server_tags(s):
                 # "Implementations MUST interpret empty tag values (e.g. foo=)
                 # as equivalent to missing tag values (e.g. foo)."
                 value = None
-            server_tags[key] = value
+            server_tags[sys.intern(key)] = value
     return server_tags
-def format_server_tags(server_tags):
+def _format_server_tags(server_tags):
     parts = []
     for (key, value) in server_tags.items():
         if value is None:
@@ -89,6 +101,10 @@ def format_server_tags(server_tags):
         else:
             parts.append('%s=%s' % (key, escape_server_tag_value(value)))
     return '@' + ';'.join(parts)
+
+def split_args(s, maxsplit=-1):
+    """Splits on spaces, treating consecutive spaces as one."""
+    return list(filter(bool, s.split(' ', maxsplit=maxsplit)))
 
 class IrcMsg(object):
     """Class to represent an IRC message.
@@ -116,6 +132,76 @@ class IrcMsg(object):
     it to a different source, they could do this:
 
     IrcMsg(prefix='', args=(newSource, otherMsg.args[1]), msg=otherMsg)
+
+    .. attribute:: command
+
+        The IRC command of the message (eg. PRIVMSG, NOTICE, MODE, QUIT, ...).
+        In case of "split" commands (eg. CAP LS), this is only the first part,
+        and the other parts are in `args`.
+
+    .. attribute:: args
+
+        Arguments of the IRC command (including subcommands).
+        For example, for a PRIVMSG,
+        `args = ('#channel', 'content of the message')`.
+
+    .. attribute:: channel
+
+        The name of the channel this message was received on or will be sent
+        to; or None if this is not a channel message (PRIVMSG to a nick, QUIT,
+        etc.)
+
+        `msg.args[0]` was formerly used to get the channel, but it had several
+        pitfalls (such as needing server-specific channel vs nick detection,
+        and needing to strip statusmsg characters).
+
+    .. attribute:: prefix
+
+        `nick!user@host` of the author of the message, or None.
+
+    .. attribute:: nick
+
+        Nickname of the author of the message, or None.
+
+    .. attribute:: user
+
+        Username/ident of the author of the message, or None.
+
+    .. attribute:: host
+
+        Hostname of the author of the message, or None.
+
+    .. attribute:: time
+
+       Float timestamp of the moment the message was sent by the server.
+       If the server does not support `server-time`, this falls back to the
+       value of `time.time()` when the message was received.
+
+    .. attribute:: server_tags
+
+        Dictionary of IRCv3 message tags. `None` values indicate the tag is
+        present but has no value.
+
+        This includes client tags; the name is meant to disambiguate wrt the
+        `tags` attribute, which are tags used internally by Supybot/Limnoria.
+
+    .. attribute:: reply_env
+
+        (Mutable) dictionary of internal key:value pairs, all of which must be
+        strings.
+
+        Several plugins offer string templating, such as the 'echo' command in
+        the Misc plugin; which replace `$variable` with a value.
+
+        Adding values to this dictionary allows access to these values from
+        these commands; this is especially useful when nesting commands.
+
+    .. attribute:: tags
+
+        (Mutable) dictionary of internal key:value pairs on this message.
+
+        This is not to be confused with IRCv3 message tags; these are
+        stored as `server_tags` (including the client tags).
     """
     # It's too useful to be able to tag IrcMsg objects with extra, unforeseen
     # data.  Goodbye, __slots__.
@@ -123,7 +209,8 @@ class IrcMsg(object):
     __slots__ = ('args', 'command', 'host', 'nick', 'prefix', 'user',
                  '_hash', '_str', '_repr', '_len', 'tags', 'reply_env',
                  'server_tags', 'time', 'channel')
-    def __init__(self, s='', command='', args=(), prefix='', msg=None,
+
+    def __init__(self, s='', command='', args=(), prefix='', server_tags=None, msg=None,
             reply_env=None):
         assert not (msg and s), 'IrcMsg.__init__ cannot accept both s and msg'
         if not s and not command and not msg:
@@ -142,20 +229,20 @@ class IrcMsg(object):
                 self._str = s
                 if s[0] == '@':
                     (server_tags, s) = s.split(' ', 1)
-                    self.server_tags = parse_server_tags(server_tags[1:])
+                    self.server_tags = _parse_server_tags(server_tags[1:])
                 else:
                     self.server_tags = {}
-                if s[0] == ':':
-                    self.prefix, s = s[1:].split(None, 1)
-                else:
-                    self.prefix = ''
                 if ' :' in s: # Note the space: IPV6 addresses are bad w/o it.
                     s, last = s.split(' :', 1)
                     
-                    self.args = s.split()
+                    self.args = split_args(s)
                     self.args.append(last.rstrip('\r\n'))
                 else:
-                    self.args = s.split()
+                    self.args = split_args(s.rstrip('\r\n'))
+                if self.args[0][0] == ':':
+                    self.prefix = self.args.pop(0)[1:]
+                else:
+                    self.prefix = ''
                 self.command = self.args.pop(0)
                 if 'time' in self.server_tags:
                     s = self.server_tags['time']
@@ -195,7 +282,12 @@ class IrcMsg(object):
                 assert all(ircutils.isValidArgument, args), args
                 self.args = args
                 self.time = None
-                self.server_tags = {}
+                if server_tags is None:
+                    self.server_tags = {}
+                else:
+                    self.server_tags = server_tags
+        self.prefix = sys.intern(self.prefix)
+        self.command = sys.intern(self.command)
         self.args = tuple(self.args)
         if isUserHostmask(self.prefix):
             (self.nick,self.user,self.host)=ircutils.splitHostmask(self.prefix)
@@ -207,25 +299,31 @@ class IrcMsg(object):
             return self._str
         if self.prefix:
             if len(self.args) > 1:
-                self._str = ':%s %s %s :%s\r\n' % \
-                            (self.prefix, self.command,
-                             ' '.join(self.args[:-1]), self.args[-1])
+                s = ':%s %s %s :%s\r\n' % (
+                    self.prefix, self.command,
+                    ' '.join(self.args[:-1]), self.args[-1])
             else:
                 if self.args:
-                    self._str = ':%s %s :%s\r\n' % \
-                                (self.prefix, self.command, self.args[0])
+                    s = ':%s %s :%s\r\n' % (
+                        self.prefix, self.command, self.args[0])
                 else:
-                    self._str = ':%s %s\r\n' % (self.prefix, self.command)
+                    s = ':%s %s\r\n' % (self.prefix, self.command)
         else:
             if len(self.args) > 1:
-                self._str = '%s %s :%s\r\n' % \
-                            (self.command,
-                             ' '.join(self.args[:-1]), self.args[-1])
+                s = '%s %s :%s\r\n' % (
+                    self.command,
+                    ' '.join(self.args[:-1]), self.args[-1])
             else:
                 if self.args:
-                    self._str = '%s :%s\r\n' % (self.command, self.args[0])
+                    s = '%s :%s\r\n' % (self.command, self.args[0])
                 else:
-                    self._str = '%s\r\n' % self.command
+                    s = '%s\r\n' % self.command
+
+        if self.server_tags:
+            s = _format_server_tags(self.server_tags) + ' ' + s
+
+        self._str = s
+
         return self._str
 
     def __len__(self):
@@ -236,7 +334,8 @@ class IrcMsg(object):
                hash(self) == hash(other) and \
                self.command == other.command and \
                self.prefix == other.prefix and \
-               self.args == other.args
+               self.args == other.args and \
+               self.server_tags == other.server_tags
     __req__ = __eq__ # I don't know exactly what this does, but it can't hurt.
 
     def __ne__(self, other):
@@ -254,19 +353,23 @@ class IrcMsg(object):
     def __repr__(self):
         if self._repr is not None:
             return self._repr
-        self._repr = format('IrcMsg(prefix=%q, command=%q, args=%r)',
-                            self.prefix, self.command, self.args)
+        self._repr = format(
+            'IrcMsg(server_tags=%r, prefix=%q, command=%q, args=%r)',
+            self.server_tags, self.prefix, self.command, self.args)
         return self._repr
 
     def __reduce__(self):
         return (self.__class__, (str(self),))
 
     def tag(self, tag, value=True):
-        """Affect a key:value pair to this message."""
+        """Affect an internal key:value pair to this message.
+
+        This is not to be confused with IRCv3 message tags; these are
+        stored as `server_tags` (including the client tags)."""
         self.tags[tag] = value
 
     def tagged(self, tag):
-        """Get the value affected to a tag."""
+        """Get the value affected to a tag, or None if it is not set.."""
         return self.tags.get(tag) # Returns None if it's not there.
 
     def __getattr__(self, attr):

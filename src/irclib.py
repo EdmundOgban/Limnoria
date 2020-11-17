@@ -30,6 +30,7 @@
 import re
 import copy
 import time
+import enum
 import random
 import base64
 import textwrap
@@ -54,11 +55,12 @@ except ImportError:
     scram = None
 
 from . import conf, ircdb, ircmsgs, ircutils, log, utils, world
+from .drivers import Server
 from .utils.str import rsplit
 from .utils.iter import chain
-from .utils.structures import smallqueue, RingBuffer
+from .utils.structures import smallqueue, RingBuffer, ExpiringDict
 
-MAX_LINE_SIZE = 512 # Including \r\n
+MAX_LINE_SIZE = 512 # Including \r\n, but excluding server_tags
 
 ###
 # The base class for a callback to be registered with an Irc object.  Shows
@@ -115,11 +117,14 @@ class IrcCallback(IrcCommandDispatcher, log.Firewalled):
     """
     callAfter = ()
     callBefore = ()
+    echoMessage = False
+    echo_message = False  # deprecated alias of echoMessage
     __firewalled__ = {'die': None,
                       'reset': None,
                       '__call__': None,
                       'inFilter': lambda self, irc, msg: msg,
                       'outFilter': lambda self, irc, msg: msg,
+                      'postTransition': None,
                       'name': lambda self: self.__class__.__name__,
                       'callPrecedence': lambda self, irc: ([], []),
                       }
@@ -170,8 +175,28 @@ class IrcCallback(IrcCommandDispatcher, log.Firewalled):
         """
         return msg
 
+    def postTransition(self, irc, msg, from_state, to_state):
+        """Called when the state of the IRC connection changes.
+
+        `msg` is the message that triggered the transition, if any."""
+        pass
+
     def __call__(self, irc, msg):
         """Used for handling each message."""
+        if not self.echoMessage and not self.echo_message \
+                and msg.command in ('PRIVMSG', 'NOTICE', 'TAGMSG') \
+                and ('label' in msg.server_tags
+                     or not msg.tagged('receivedAt')):
+            # This is an echo of a message we sent; and the plugin didn't
+            # opt-in to receiving echos; ignoring it.
+            # `'label' in msg.server_tags` detects echos when labeled-response
+            # is enabled; and `not msg.tag('receivedAt')` detects simulated
+            # echos. As we don't enable real echo-message unless
+            # labeled-response is enabled; this is an exhaustive check of echos
+            # in all cases.
+            # See "When a client sends a private message to its own nick" at
+            # <https://ircv3.net/specs/extensions/labeled-response>
+            return
         method = self.dispatchCommand(msg.command, msg.args)
         if method is not None:
             method(irc, msg)
@@ -276,6 +301,58 @@ class IrcMsgQueue(object):
 # status of various modes (especially ops/halfops/voices) in channels, etc.
 ###
 class ChannelState(utils.python.Object):
+    """Represents the known state of an IRC channel.
+
+    .. attribute:: topic
+
+        The topic of a channel (possibly the empty stringà
+
+        :type: str
+
+    .. attribute:: created
+
+        Timestamp of the channel creation, according to the server.
+
+        :type: int
+
+    .. attribute:: ops
+
+        Set of the nicks of all the operators of the channel.
+
+        :type: ircutils.IrcSet[str]
+
+    .. attribute:: halfops
+
+        Set of the nicks of all the half-operators of the channel.
+
+        :type: ircutils.IrcSet[str]
+
+    .. attribute:: voices
+
+        Set of the nicks of all the voiced users of the channel.
+
+        :type: ircutils.IrcSet[str]
+
+    .. attribute:: users
+
+        Set of the nicks of all the users in the channel.
+
+        :type: ircutils.IrcSet[str]
+
+    .. attribute:: bans
+
+        Set of the all the banmasks set in the channel.
+
+        :type: ircutils.IrcSet[str]
+
+    .. attribute:: modes
+
+        Dict of all the modes set in the channel, with they value, if any.
+        This excludes the following modes: ovhbeq
+
+        :type: Dict[str, Optional[str]]
+    """
+
     __slots__ = ('users', 'ops', 'halfops', 'bans',
                  'voices', 'topic', 'modes', 'created')
     def __init__(self):
@@ -289,16 +366,27 @@ class ChannelState(utils.python.Object):
         self.modes = {}
 
     def isOp(self, nick):
+        """Returns whether the given nick is an op."""
         return nick in self.ops
+
     def isOpPlus(self, nick):
+        """Returns whether the given nick is an op."""
         return nick in self.ops
+
     def isVoice(self, nick):
+        """Returns whether the given nick is voiced."""
         return nick in self.voices
+
     def isVoicePlus(self, nick):
+        """Returns whether the given nick is voiced, an halfop, or an op."""
         return nick in self.voices or nick in self.halfops or nick in self.ops
+
     def isHalfop(self, nick):
+        """Returns whether the given nick is an halfop."""
         return nick in self.halfops
+
     def isHalfopPlus(self, nick):
+        """Returns whether the given nick is an halfop, or an op."""
         return nick in self.halfops or nick in self.ops
 
     def addUser(self, user):
@@ -387,16 +475,218 @@ class ChannelState(utils.python.Object):
             ret = ret and getattr(self, name) == getattr(other, name)
         return ret
 
+
 Batch = collections.namedtuple('Batch', 'type arguments messages')
+"""Represents a batch of messages, see
+<https://ircv3.net/specs/extensions/batch-3.2>"""
+
+
+class IrcStateFsm(object):
+    '''Finite State Machine keeping track of what part of the connection
+    initialization we are in.'''
+    __slots__ = ('state',)
+
+    @enum.unique
+    class States(enum.Enum):
+        """Enumeration of all the states of an IRC connection."""
+
+        UNINITIALIZED = 10
+        '''Nothing received yet (except server notices)'''
+
+        INIT_CAP_NEGOTIATION = 20
+        '''Sent CAP LS, did not send CAP END yet'''
+
+        INIT_SASL = 30
+        '''In an AUTHENTICATE session'''
+
+        INIT_WAITING_MOTD = 50
+        '''Waiting for start of MOTD'''
+
+        INIT_MOTD = 60
+        '''Waiting for end of MOTD'''
+
+        CONNECTED = 70
+        '''Normal state of the connections'''
+
+        CONNECTED_SASL = 80
+        '''Doing SASL authentication in the middle of a connection.'''
+
+        SHUTTING_DOWN = 100
+
+    def __init__(self):
+        self.reset()
+
+    def reset(self):
+        if getattr(self, 'state', None) is not None:
+            log.debug('resetting from %s to %s',
+                self.state, self.States.UNINITIALIZED)
+        self.state = self.States.UNINITIALIZED
+
+    def _transition(self, irc, msg, to_state, expected_from=None):
+        """Transitions to state `to_state`.
+
+        If `expected_from` is not `None`, first checks the current state is
+        in the set.
+
+        After the transition, calls the
+        `postTransition(irc, msg, from_state, to_state)` method of all objects
+        in `irc.callbacks`.
+
+        `msg` may be None if the transition isn't triggered by a message, but
+        `irc` may not."""
+        from_state = self.state
+        if expected_from is None or from_state in expected_from:
+            log.debug('transition from %s to %s', self.state, to_state)
+            self.state = to_state
+            for callback in reversed(irc.callbacks):
+                msg = callback.postTransition(irc, msg, from_state, to_state)
+        else:
+            raise ValueError('unexpected transition to %s while in state %s' %
+                (to_state, self.state))
+
+    def expect_state(self, expected_states):
+        if self.state not in expected_states:
+            raise ValueError(('Connection in state %s, but expected to be '
+                              'in state %s') % (self.state, expected_states))
+
+    def on_init_messages_sent(self, irc):
+        '''As soon as USER/NICK/CAP LS are sent'''
+        self._transition(irc, None, self.States.INIT_CAP_NEGOTIATION, [
+            self.States.UNINITIALIZED,
+        ])
+
+    def on_sasl_cap(self, irc, msg):
+        '''Whenever we see the 'sasl' capability in a CAP LS response'''
+        if self.state == self.States.INIT_CAP_NEGOTIATION:
+            self._transition(irc, msg, self.States.INIT_SASL)
+        elif self.state == self.States.CONNECTED:
+            self._transition(irc, msg, self.States.CONNECTED_SASL)
+        else:
+            raise ValueError('Got sasl cap while in state %s' % self.state)
+
+    def on_sasl_auth_finished(self, irc, msg):
+        '''When sasl auth either succeeded or failed.'''
+        if self.state == self.States.INIT_SASL:
+            self._transition(irc, msg, self.States.INIT_CAP_NEGOTIATION)
+        elif self.state == self.States.CONNECTED_SASL:
+            self._transition(irc, msg, self.States.CONNECTED)
+        else:
+            raise ValueError('Finished SASL auth while in state %s' % self.state)
+
+    def on_cap_end(self, irc, msg):
+        '''When we send CAP END'''
+        self._transition(irc, msg, self.States.INIT_WAITING_MOTD, [
+            self.States.INIT_CAP_NEGOTIATION,
+        ])
+
+    def on_start_motd(self, irc, msg):
+        '''On 375 (RPL_MOTDSTART)'''
+        self._transition(irc, msg, self.States.INIT_MOTD, [
+            self.States.INIT_CAP_NEGOTIATION,
+            self.States.INIT_WAITING_MOTD,
+            self.States.CONNECTED,
+            self.States.CONNECTED_SASL,
+        ])
+
+    def on_end_motd(self, irc, msg):
+        '''On 376 (RPL_ENDOFMOTD) or 422 (ERR_NOMOTD)'''
+        self._transition(irc, msg, self.States.CONNECTED, [
+            self.States.INIT_CAP_NEGOTIATION,
+            self.States.INIT_WAITING_MOTD,
+            self.States.INIT_MOTD,
+            self.States.CONNECTED,
+            self.States.CONNECTED_SASL,
+        ])
+
+    def on_shutdown(self, irc, msg):
+        self._transition(irc, msg, self.States.SHUTTING_DOWN)
 
 class IrcState(IrcCommandDispatcher, log.Firewalled):
     """Maintains state of the Irc connection.  Should also become smarter.
+
+    .. attribute:: fsm
+
+        A finite-state machine representing the current state of the IRC
+        connection: various steps while connecting, then remains in the
+        CONNECTED state (or CONNECTED_SASL when doing SASL in the middle of a
+        connection).
+
+        :type: IrcStateFsm
+
+    .. attribute:: capabilities_req
+
+        Set of all capabilities requested from the server.
+        See <https://ircv3.net/specs/core/capability-negotiation>
+
+        :type: Set[str]
+
+    .. attribute:: capabilities_acq
+
+        Set of all capabilities requested from and acknowledged by the
+        server. See <https://ircv3.net/specs/core/capability-negotiation>
+
+        :type: Set[str]
+
+    .. attribute:: capabilities_nak
+
+        Set of all capabilities requested from and refused by the server.
+        This should always be empty unless the bot, a plugin, or the server is
+        misbehaving. See <https://ircv3.net/specs/core/capability-negotiation>
+
+        :type: Set[str]
+
+    .. attribute:: capabilities_ls
+
+        Stores all the capabilities advertised by the server, as well as their
+        value, if any.
+
+        :type: Dict[str, Optional[str]]
+
+    .. attribute:: ircd
+
+        Identification string of the software running the server we are
+        connected to. See
+        <https://defs.ircdocs.horse/defs/numerics.html#rpl-myinfo-004>
+
+        :type: str
+
+    .. attribute:: supported
+
+        Stores the value of ISUPPORT sent when connecting.
+        See <https://defs.ircdocs.horse/defs/isupport.html> for the list of
+        keys.
+
+        :type: utils.InsensitivePreservingDict[str, Any]
+
+    .. attribute:: history
+
+        History of messages received from the network. Automatically discards
+        messages so it doesn't exceed
+        ``supybot.protocols.irc.maxHistoryLength``.
+
+        :type: RingBuffer[ircmsgs.IrcMsg]
+
+    .. attribute:: channels
+
+        Store channel states.
+
+        :type: ircutils.IrcDict[str, ChannelState]
+
+    .. attribute:: nickToHostmask
+
+        Stores the last hostmask of a seen nick.
+
+        :type: ircutils.IrcDict[str, str]
     """
     __firewalled__ = {'addMsg': None}
+
+
     def __init__(self, history=None, supported=None,
                  nicksToHostmasks=None, channels=None,
+                 capabilities_req=None,
                  capabilities_ack=None, capabilities_nak=None,
                  capabilities_ls=None):
+        self.fsm = IrcStateFsm()
         if history is None:
             history = RingBuffer(conf.supybot.protocols.irc.maxHistoryLength())
         if supported is None:
@@ -405,6 +695,7 @@ class IrcState(IrcCommandDispatcher, log.Firewalled):
             nicksToHostmasks = ircutils.IrcDict()
         if channels is None:
             channels = ircutils.IrcDict()
+        self.capabilities_req = capabilities_req or set()
         self.capabilities_ack = capabilities_ack or set()
         self.capabilities_nak = capabilities_nak or set()
         self.capabilities_ls = capabilities_ls or {}
@@ -413,17 +704,22 @@ class IrcState(IrcCommandDispatcher, log.Firewalled):
         self.history = history
         self.channels = channels
         self.nicksToHostmasks = nicksToHostmasks
-        self.batches = {}
+
+        # Batches should always finish and be way shorter than 3600s, but
+        # let's just make sure to avoid leaking memory.
+        self.batches = ExpiringDict(timeout=3600)
 
     def reset(self):
         """Resets the state to normal, unconnected state."""
+        self.fsm.reset()
         self.history.reset()
         self.history.resize(conf.supybot.protocols.irc.maxHistoryLength())
         self.ircd = None
         self.channels.clear()
         self.supported.clear()
         self.nicksToHostmasks.clear()
-        self.batches = {}
+        self.batches.clear()
+        self.capabilities_req = set()
         self.capabilities_ack = set()
         self.capabilities_nak = set()
         self.capabilities_ls = {}
@@ -478,12 +774,17 @@ class IrcState(IrcCommandDispatcher, log.Firewalled):
         Supported user and channel modes are cached"""
         # msg.args = [nick, server, ircd-version, umodes, modes,
         #             modes that require arguments? (non-standard)]
-        self.ircd = msg.args[2] if len(msg.args) >= 3 else msg.args[1]
-        self.supported['umodes'] = frozenset(msg.args[3])
-        self.supported['chanmodes'] = frozenset(msg.args[4])
+        self.ircd = msg.args[2] if len(msg.args) > 2 else msg.args[1]
+
+        # The conditionals are for Twitch, which doesn't send umodes or
+        # chanmodes.
+        if len(msg.args) > 3:
+            self.supported['umodes'] = frozenset(msg.args[3])
+        if len(msg.args) > 4:
+            self.supported['chanmodes'] = frozenset(msg.args[4])
 
     _005converters = utils.InsensitivePreservingDict({
-        'modes': int,
+        'modes': lambda s: int(s) if s else None,  # it's optional
         'keylen': int,
         'nicklen': int,
         'userlen': int,
@@ -717,9 +1018,10 @@ class IrcState(IrcCommandDispatcher, log.Firewalled):
             batch_type = msg.args[1]
             batch_arguments = tuple(msg.args[2:])
             self.batches[batch_name] = Batch(type=batch_type,
-                    arguments=batch_arguments, messages=[])
+                    arguments=batch_arguments, messages=[msg])
         elif msg.args[0].startswith('-'):
             batch = self.batches.pop(batch_name)
+            batch.messages.append(msg)
             msg.tag('batch', batch)
         else:
             assert False, msg.args[0]
@@ -742,6 +1044,76 @@ class Irc(IrcCommandDispatcher, log.Firewalled):
     """The base class for an IRC connection.
 
     Handles PING commands already.
+
+    .. attribute:: zombie
+
+        Whether or not this object represents a living IRC connection.
+
+        :type: bool
+
+    .. attribute:: network
+
+        The name of the network this object is connected to.
+
+        :type: str
+
+    .. attribute:: startedAt
+
+        When this connection was (re)started.
+
+        :type: float
+
+    .. attribute:: callbacks
+
+        List of all callbacks (ie. plugins) currently loaded
+
+        :type: List[IrcCallback]
+
+    .. attribute:: queue
+
+        Queue of messages waiting to be sent. Plugins should use the
+        ``queueMsg`` method instead of accessing this directly.
+
+        :type: IrcMsgQueue
+
+    .. attribute:: fastqueue
+
+        Same as ``queue``, but for messages with high priority. Plugins should
+        use the ``sendMsg`` method instead of accessing this directly (or
+        `queueMsg` if the message isn't high priority).
+
+        :type: smallqueue
+
+    .. attribute:: driver
+
+        Driver of the IRC connection (normally, a
+        :py:class:`supybot.drivers.Socket.SocketDriver` object).
+        Plugins normally do not need to access this.
+
+    .. attribute:: startedSync
+
+        When joining a channel, a ``'#channel': time.time()`` entry is added
+        to this dict, which is then removed when the join is completed.
+        Plugins should not change this value, it is automatically handled when
+        they send a JOIN.
+
+        :type: ircutils.IrcDict[str, float]
+
+    .. attribute:: monitoring
+
+        A dict with nicks as keys and the number of plugins monitoring this
+        nick as value.
+        Plugins should not access this directly, and should use the ``monitor``
+        and ``unmonitor`` methods instead.
+
+        :type: ircutils.IrcDict[str, int]
+
+    .. attribute:: state
+
+        An :py:class:`supybot.irclib.IrcState` object, which stores all the
+        known information about the connection with the IRC network.
+
+        :type: supybot.irclib.IrcState
     """
     __firewalled__ = {'die': None,
                       'feedMsg': None,
@@ -777,6 +1149,9 @@ class Irc(IrcCommandDispatcher, log.Firewalled):
         return ircutils.isChannel(s, **kw)
 
     def isNick(self, s):
+        """Returns whether the given argument is a valid nick on this
+        network.
+        """
         kw = {}
         if 'nicklen' in self.state.supported:
             kw['nicklen'] = self.state.supported['nicklen']
@@ -858,6 +1233,27 @@ class Irc(IrcCommandDispatcher, log.Firewalled):
         else:
             log.warning('Refusing to send %r; %s is a zombie.', msg, self)
 
+    def _truncateMsg(self, msg):
+        msg_str = str(msg)
+        if msg_str[0] == '@':
+            (msg_tags_str, msg_rest_str) = msg_str.split(' ', 1)
+            msg_tags_str += ' '
+        else:
+            msg_tags_str = ''
+            msg_rest_str = msg_str
+        if len(msg_rest_str) > MAX_LINE_SIZE:
+            # Yes, this violates the contract, but at this point it doesn't
+            # matter.  That's why we gotta go munging in private attributes
+            #
+            # I'm changing this to a log.debug to fix a possible loop in
+            # the LogToIrc plugin.  Since users can't do anything about
+            # this issue, there's no fundamental reason to make it a
+            # warning.
+            log.debug('Truncating %r, message is too long.', msg)
+            msg._str = msg_tags_str + msg_rest_str[:MAX_LINE_SIZE-2] + '\r\n'
+            msg._len = len(str(msg))
+        # TODO: truncate tags
+
     def takeMsg(self):
         """Called by the IrcDriver; takes a message to be sent."""
         if not self.callbacks:
@@ -887,6 +1283,13 @@ class Irc(IrcCommandDispatcher, log.Firewalled):
                 self.outstandingPing = True
                 self.queueMsg(ircmsgs.ping(now))
         if msg:
+            if not world.testing and 'label' not in msg.server_tags \
+                    and 'labeled-response' in self.state.capabilities_ack:
+                # Not adding labels while testing, because it would break
+                # all plugin tests using IrcMsg equality (unless they
+                # explicitly add the label, but it becomes a burden).
+                msg.server_tags['label'] = ircutils.makeLabel()
+                msg._len = msg._str = None
             for callback in reversed(self.callbacks):
                 self._setMsgChannel(msg)
                 msg = callback.outFilter(self, msg)
@@ -894,23 +1297,22 @@ class Irc(IrcCommandDispatcher, log.Firewalled):
                     log.debug('%s.outFilter returned None.', callback.name())
                     return self.takeMsg()
                 world.debugFlush()
-            if len(str(msg)) > MAX_LINE_SIZE:
-                # Yes, this violates the contract, but at this point it doesn't
-                # matter.  That's why we gotta go munging in private attributes
-                #
-                # I'm changing this to a log.debug to fix a possible loop in
-                # the LogToIrc plugin.  Since users can't do anything about
-                # this issue, there's no fundamental reason to make it a
-                # warning.
-                log.debug('Truncating %r, message is too long.', msg)
-                msg._str = msg._str[:MAX_LINE_SIZE-2] + '\r\n'
-                msg._len = len(str(msg))
-            # I don't think we should do this.  Why should it matter?  If it's
-            # something important, then the server will send it back to us,
-            # and if it's just a privmsg/notice/etc., we don't care.
-            # On second thought, we need this for testing.
-            if world.testing:
-                self.state.addMsg(self, msg)
+
+            self._truncateMsg(msg)
+
+            if msg.command.upper() in ('PRIVMSG', 'NOTICE', 'TAGMSG') \
+                    and 'echo-message' not in self.state.capabilities_ack:
+                # echo-message is not implemented by server; let's emulate it
+                # here, just before sending it to the driver.
+                assert not msg.tagged('receivedAt')
+                self.feedMsg(msg, tag=False)
+            else:
+                # I don't think we should do this.  Why should it matter?  If it's
+                # something important, then the server will send it back to us,
+                # and if it's just a privmsg/notice/etc., we don't care.
+                # On second thought, we need this for testing.
+                if world.testing:
+                    self.state.addMsg(self, msg)
             log.debug('Outgoing message (%s): %s', self.network, str(msg).rstrip('\r\n'))
             return msg
         elif self.zombie:
@@ -946,9 +1348,13 @@ class Irc(IrcCommandDispatcher, log.Firewalled):
         return channel.lstrip(statusmsg_chars)
 
     _numericErrorCommandRe = re.compile(r'^[45][0-9][0-9]$')
-    def feedMsg(self, msg):
-        """Called by the IrcDriver; feeds a message received."""
-        self._tagMsg(msg)
+    def feedMsg(self, msg, tag=True):
+        """Called by the IrcDriver; feeds a message received.
+
+        `tag=False` is used when simulating echo messages, to skip adding
+        received* tags."""
+        if tag:
+            self._tagMsg(msg)
         channel = msg.channel
 
         preInFilter = str(msg).rstrip('\r\n')
@@ -1030,7 +1436,10 @@ class Irc(IrcCommandDispatcher, log.Firewalled):
         self.fastqueue.reset()
         self.startedSync.clear()
         for callback in self.callbacks:
-            callback.reset()
+            try:
+                callback.reset()
+            except Exception:
+                log.exception('Uncaught exception in %r.reset()', callback)
         self._queueConnectMessages()
 
     def _setNonResettingVariables(self):
@@ -1098,11 +1507,18 @@ class Irc(IrcCommandDispatcher, log.Firewalled):
             self.REQUEST_CAPABILITIES.add('sasl')
 
 
+    # Note: echo-message is only requested if labeled-response is available.
     REQUEST_CAPABILITIES = set(['account-notify', 'extended-join',
         'multi-prefix', 'metadata-notify', 'account-tag',
         'userhost-in-names', 'invite-notify', 'server-time',
         'chghost', 'batch', 'away-notify', 'message-tags',
-        'msgid'])
+        'msgid', 'setname', 'labeled-response', 'echo-message'])
+    """IRCv3 capabilities requested when they are available.
+
+    echo-message is special-cased to be requested only with labeled-response.
+
+    To check if a capability was negotiated, use `irc.state.capabilities_ack`.
+    """
 
     def _queueConnectMessages(self):
         if self.zombie:
@@ -1114,6 +1530,8 @@ class Irc(IrcCommandDispatcher, log.Firewalled):
         self.sendMsg(ircmsgs.IrcMsg(command='CAP', args=('LS', '302')))
 
         self.sendAuthenticationMessages()
+
+        self.state.fsm.on_init_messages_sent(self)
 
     def sendAuthenticationMessages(self):
         # Notes:
@@ -1135,17 +1553,63 @@ class Irc(IrcCommandDispatcher, log.Firewalled):
 
         self.sendMsg(ircmsgs.user(self.ident, self.user))
 
-    def endCapabilityNegociation(self):
-        if not self.capNegociationEnded:
-            self.capNegociationEnded = True
-            self.sendMsg(ircmsgs.IrcMsg(command='CAP', args=('END',)))
+    def capUpkeep(self, msg):
+        """
+        Called after getting a CAP ACK/NAK to check it's consistent with what
+        was requested, and to end the cap negotiation when we received all the
+        ACK/NAKs we were waiting for.
+
+        `msg` is the message that triggered this call."""
+        self.state.fsm.expect_state([
+            # Normal CAP ACK / CAP NAK during cap negotiation
+            IrcStateFsm.States.INIT_CAP_NEGOTIATION,
+            # CAP ACK / CAP NAK after a CAP NEW (probably)
+            IrcStateFsm.States.CONNECTED,
+        ])
+
+        capabilities_responded = (self.state.capabilities_ack |
+            self.state.capabilities_nak)
+        if not capabilities_responded <= self.state.capabilities_req:
+            log.error('Server responded with unrequested ACK/NAK '
+                      'capabilities: req=%r, ack=%r, nak=%r',
+                      self.state.capabilities_req,
+                      self.state.capabilities_ack,
+                      self.state.capabilities_nak)
+            self.driver.reconnect(wait=True)
+        elif capabilities_responded == self.state.capabilities_req:
+            log.debug('Got all capabilities ACKed/NAKed')
+            # We got all the capabilities we asked for
+            if 'sasl' in self.state.capabilities_ack:
+                if self.state.fsm.state in [
+                        IrcStateFsm.States.INIT_CAP_NEGOTIATION,
+                        IrcStateFsm.States.CONNECTED]:
+                    self._maybeStartSasl(msg)
+                else:
+                    pass # Already in the middle of a SASL auth
+            elif self.state.fsm.state != IrcStateFsm.States.CONNECTED:
+                # If we are still in the initial cap negotiation (ie. if this
+                # is not in response to a 'CAP NEW'), send a CAP END so the
+                # server sends us the MOTD
+                self.endCapabilityNegociation(msg)
+        else:
+            log.debug('Waiting for ACK/NAK of capabilities: %r',
+                      self.state.capabilities_req - capabilities_responded)
+            pass # Do nothing, we'll get more
+
+    def endCapabilityNegociation(self, msg):
+        self.state.fsm.on_cap_end(self, msg)
+        self.sendMsg(ircmsgs.IrcMsg(command='CAP', args=('END',)))
 
     def sendSaslString(self, string):
         for chunk in ircutils.authenticate_generator(string):
             self.sendMsg(ircmsgs.IrcMsg(command='AUTHENTICATE',
                 args=(chunk,)))
 
-    def tryNextSaslMechanism(self):
+    def tryNextSaslMechanism(self, msg):
+        self.state.fsm.expect_state([
+            IrcStateFsm.States.INIT_SASL,
+            IrcStateFsm.States.CONNECTED_SASL,
+        ])
         if self.sasl_next_mechanisms:
             self.sasl_current_mechanism = self.sasl_next_mechanisms.pop(0)
             self.sendMsg(ircmsgs.IrcMsg(command='AUTHENTICATE',
@@ -1155,15 +1619,30 @@ class Irc(IrcCommandDispatcher, log.Firewalled):
                     'aborting connection.')
         else:
             self.sasl_current_mechanism = None
-            self.endCapabilityNegociation()
+            self.state.fsm.on_sasl_auth_finished(self, msg)
+            if self.state.fsm.state == IrcStateFsm.States.INIT_CAP_NEGOTIATION:
+                self.endCapabilityNegociation(msg)
 
-    def filterSaslMechanisms(self, available):
-        available = set(map(str.lower, available))
-        self.sasl_next_mechanisms = [
-                x for x in self.sasl_next_mechanisms
-                if x.lower() in available]
+    def _maybeStartSasl(self, msg):
+        if not self.sasl_authenticated and \
+                'sasl' in self.state.capabilities_ack:
+            self.state.fsm.on_sasl_cap(self, msg)
+            assert 'sasl' in self.state.capabilities_ls, (
+                'Got "CAP ACK sasl" without receiving "CAP LS sasl" or '
+                '"CAP NEW sasl" first.')
+            s = self.state.capabilities_ls['sasl']
+            if s is not None:
+                available = set(map(str.lower, s.split(',')))
+                self.sasl_next_mechanisms = [
+                        x for x in self.sasl_next_mechanisms
+                        if x.lower() in available]
+            self.tryNextSaslMechanism(msg)
 
     def doAuthenticate(self, msg):
+        self.state.fsm.expect_state([
+            IrcStateFsm.States.INIT_SASL,
+            IrcStateFsm.States.CONNECTED_SASL,
+        ])
         if not self.authenticate_decoder:
             self.authenticate_decoder = ircutils.AuthenticateDecoder()
         self.authenticate_decoder.feed(msg)
@@ -1265,26 +1744,28 @@ class Irc(IrcCommandDispatcher, log.Firewalled):
     def do903(self, msg):
         log.info('%s: SASL authentication successful', self.network)
         self.sasl_authenticated = True
-        self.endCapabilityNegociation()
+        self.state.fsm.on_sasl_auth_finished(self, msg)
+        if self.state.fsm.state == IrcStateFsm.States.INIT_CAP_NEGOTIATION:
+            self.endCapabilityNegociation(msg)
 
     def do904(self, msg):
         log.warning('%s: SASL authentication failed (mechanism: %s)',
                 self.network, self.sasl_current_mechanism)
-        self.tryNextSaslMechanism()
+        self.tryNextSaslMechanism(msg)
 
     def do905(self, msg):
         log.warning('%s: SASL authentication failed because the username or '
                     'password is too long.', self.network)
-        self.tryNextSaslMechanism()
+        self.tryNextSaslMechanism(msg)
 
     def do906(self, msg):
         log.warning('%s: SASL authentication aborted', self.network)
-        self.tryNextSaslMechanism()
+        self.tryNextSaslMechanism(msg)
 
     def do907(self, msg):
         log.warning('%s: Attempted SASL authentication when we were already '
                     'authenticated.', self.network)
-        self.tryNextSaslMechanism()
+        self.tryNextSaslMechanism(msg)
 
     def do908(self, msg):
         log.info('%s: Supported SASL mechanisms: %s',
@@ -1301,10 +1782,8 @@ class Irc(IrcCommandDispatcher, log.Firewalled):
                  self.network, caps)
         self.state.capabilities_ack.update(caps)
 
-        if 'sasl' in caps:
-            self.tryNextSaslMechanism()
-        else:
-            self.endCapabilityNegociation()
+        self.capUpkeep(msg)
+
     def doCapNak(self, msg):
         if len(msg.args) != 3:
             log.warning('Bad CAP NAK from server: %r', msg)
@@ -1314,31 +1793,79 @@ class Irc(IrcCommandDispatcher, log.Firewalled):
         self.state.capabilities_nak.update(caps)
         log.warning('%s: Server refused capabilities: %L',
                     self.network, caps)
-        self.endCapabilityNegociation()
-    def _addCapabilities(self, capstring):
+        self.capUpkeep(msg)
+
+    def _onCapSts(self, policy, msg):
+        secure_connection = self.driver.currentServer.force_tls_verification \
+            or (self.driver.ssl and self.driver.anyCertValidationEnabled())
+
+        parsed_policy = ircutils.parseStsPolicy(
+            log, policy, parseDuration=secure_connection)
+        if parsed_policy is None:
+            # There was an error (and it was logged). Ignore it and proceed
+            # with the connection.
+            # Currently this shouldn't happen, but let's future-proof it, eg.
+            # in case https://github.com/ircv3/ircv3-specifications/pull/390
+            # gets adopted.
+            return
+
+        if secure_connection:
+            # TLS is enabled and certificate is verified; write the STS policy
+            # in stone.
+            # For future-proofing (because we don't want to write an invalid
+            # value), we write the raw policy received from the server instead
+            # of the parsed one.
+            log.debug('Storing STS policy: %s', policy)
+            ircdb.networks.getNetwork(self.network).addStsPolicy(
+                self.driver.currentServer.hostname, policy)
+        else:
+            hostname = self.driver.currentServer.hostname
+            log.info('Got STS policy over insecure connection; '
+                     'reconnecting to secure port. %r',
+                     self.driver.currentServer)
+            # Reconnect to the server, but with TLS *and* certificate
+            # validation this time.
+            self.state.fsm.on_shutdown(self, msg)
+            self.driver.reconnect(
+                server=Server(hostname, parsed_policy['port'], True),
+                wait=True)
+
+    def _addCapabilities(self, capstring, msg):
         for item in capstring.split():
             while item.startswith(('=', '~')):
                 item = item[1:]
             if '=' in item:
                 (cap, value) = item.split('=', 1)
+                if cap == 'sts':
+                    self._onCapSts(value, msg)
                 self.state.capabilities_ls[cap] = value
             else:
+                if item == 'sts':
+                    log.error('Got "sts" capability without value. Aborting '
+                              'connection.')
+                    self.driver.reconnect(wait=True)
                 self.state.capabilities_ls[item] = None
+
+
     def doCapLs(self, msg):
         if len(msg.args) == 4:
             # Multi-line LS
             if msg.args[2] != '*':
                 log.warning('Bad CAP LS from server: %r', msg)
                 return
-            self._addCapabilities(msg.args[3])
+            self._addCapabilities(msg.args[3], msg)
         elif len(msg.args) == 3: # End of LS
-            self._addCapabilities(msg.args[2])
-
-            if 'sasl' in self.state.capabilities_ls:
-                s = self.state.capabilities_ls['sasl']
-                if s is not None:
-                    self.filterSaslMechanisms(set(s.split(',')))
-
+            self._addCapabilities(msg.args[2], msg)
+            if self.state.fsm.state == IrcStateFsm.States.SHUTTING_DOWN:
+                return
+            self.state.fsm.expect_state([
+                # Normal case:
+                IrcStateFsm.States.INIT_CAP_NEGOTIATION,
+                # Should only happen if a plugin sends a CAP LS (which they
+                # shouldn't do):
+                IrcStateFsm.States.CONNECTED,
+                IrcStateFsm.States.CONNECTED_SASL,
+            ])
             # Normally at this point, self.state.capabilities_ack should be
             # empty; but let's just make sure we're not requesting the same
             # caps twice for no reason.
@@ -1352,10 +1879,11 @@ class Irc(IrcCommandDispatcher, log.Firewalled):
             if new_caps:
                 self._requestCaps(new_caps)
             else:
-                self.endCapabilityNegociation()
+                self.endCapabilityNegociation(msg)
         else:
             log.warning('Bad CAP LS from server: %r', msg)
             return
+
     def doCapDel(self, msg):
         if len(msg.args) != 3:
             log.warning('Bad CAP DEL from server: %r', msg)
@@ -1374,18 +1902,18 @@ class Irc(IrcCommandDispatcher, log.Firewalled):
                 self.state.capabilities_ack.remove(cap)
             except KeyError:
                 pass
+
     def doCapNew(self, msg):
+        # Note that in theory, this method may be called at any time, even
+        # before CAP END (or even before the initial CAP LS).
         if len(msg.args) != 3:
             log.warning('Bad CAP NEW from server: %r', msg)
             return
         caps = msg.args[2].split()
         assert caps, 'Empty list of capabilities'
-        self._addCapabilities(msg.args[2])
-        if not self.sasl_authenticated and 'sasl' in self.state.capabilities_ls:
-            self.resetSasl()
-            s = self.state.capabilities_ls['sasl']
-            if s is not None:
-                self.filterSaslMechanisms(set(s.split(',')))
+        self._addCapabilities(msg.args[2], msg)
+        if self.state.fsm.state == IrcStateFsm.States.SHUTTING_DOWN:
+            return
         common_supported_unrequested_capabilities = (
                 set(self.state.capabilities_ls) &
                 self.REQUEST_CAPABILITIES -
@@ -1394,9 +1922,31 @@ class Irc(IrcCommandDispatcher, log.Firewalled):
             self._requestCaps(common_supported_unrequested_capabilities)
 
     def _requestCaps(self, caps):
-        caps = ' '.join(sorted(caps))
+        caps = list(sorted(caps))
+        cap_lines = []
+        if 'echo-message' in caps \
+                and 'labeled-response' not in self.state.capabilities_ack:
+            # Make sure echo-message is never requested unless we either have
+            # labeled-response already, or we request it *on the same line*
+            # so they are both accepted or both rejected). The reason for this
+            # is that this is required to properly deal with PRIVMSGs sent to
+            # oneself.
+            # See "When a client sends a private message to its own nick" at
+            # <https://ircv3.net/specs/extensions/labeled-response>
+            caps.remove('echo-message')
+            if 'labeled-response' in caps:
+                caps.remove('labeled-response')
+                # This makes sure they are always on the same line (which
+                # happens to be the first):
+                caps = ['echo-message', 'labeled-response'] + caps
+
+        self.state.capabilities_req |= set(caps)
+
+        caps = ' '.join(caps)
         # textwrap works here because in ASCII, all chars are 1 bytes:
-        cap_lines = textwrap.wrap(caps, MAX_LINE_SIZE-len('CAP REQ :'))
+        cap_lines = textwrap.wrap(
+            caps, MAX_LINE_SIZE-len('CAP REQ :'),
+            break_long_words=False, break_on_hyphens=False)
         for cap_line in cap_lines:
             self.sendMsg(ircmsgs.IrcMsg(command='CAP',
                 args=('REQ', cap_line)))
@@ -1473,7 +2023,12 @@ class Irc(IrcCommandDispatcher, log.Firewalled):
         """Handles PONG messages."""
         self.outstandingPing = False
 
+    def do375(self, msg):
+        self.state.fsm.on_start_motd(self, msg)
+        log.info('Got start of MOTD from %s', self.server)
+
     def do376(self, msg):
+        self.state.fsm.on_end_motd(self, msg)
         log.info('Got end of MOTD from %s', self.server)
         self.afterConnect = True
         # Let's reset nicks in case we had to use a weird one.

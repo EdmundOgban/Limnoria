@@ -59,12 +59,18 @@ class FakeLog(object):
 class ChannelLogger(callbacks.Plugin):
     """This plugin allows the bot to log channel conversations to disk."""
     noIgnore = True
+    echoMessage = True
+
     def __init__(self, irc):
         self.__parent = super(ChannelLogger, self)
         self.__parent.__init__(irc)
         self.logs = {}
         self.flusher = self.flush
         world.flushers.append(self.flusher)
+
+        # 10 minutes is long enough to be confident the server won't send
+        # messages after they timeouted.
+        self._emitted_relayed_msgs = utils.structures.ExpiringDict(10*60)
 
     def die(self):
         for log in self._logs():
@@ -185,7 +191,21 @@ class ChannelLogger(callbacks.Plugin):
                 except KeyError:
                     logChannelMessages = True
                 nick = msg.nick or irc.nick
+                rewriteRelayed = self.registryValue('rewriteRelayed',
+                                                    channel, irc.network)
                 if msg.tagged('ChannelLogger__relayed'):
+                    wasRelayed = True
+                elif 'label' in msg.server_tags:
+                    label = msg.server_tags['label']
+                    if label in self._emitted_relayed_msgs:
+                        del self._emitted_relayed_msgs[label]
+                        wasRelayed = True
+                    else:
+                        wasRelayed = False
+                else:
+                    wasRelayed = False
+
+                if rewriteRelayed and wasRelayed:
                     (nick, text) = text.split(' ', 1)
                     nick = nick[1:-1]
                     msg.args = (recipients, text)
@@ -276,14 +296,27 @@ class ChannelLogger(callbacks.Plugin):
                            msg.nick, msg.prefix, reason)
 
     def outFilter(self, irc, msg):
-        # Gotta catch my own messages *somehow* :)
-        # Let's try this little trick...
+        # Mark/remember outgoing relayed messages, so we can rewrite them if
+        # rewriteRelayed is True.
         if msg.command in ('PRIVMSG', 'NOTICE'):
-            # Other messages should be sent back to us.
-            m = ircmsgs.IrcMsg(msg=msg, prefix=irc.prefix)
-            if msg.tagged('relayedMsg'):
-                m.tag('ChannelLogger__relayed')
-            self(irc, m)
+            rewriteRelayed = self.registryValue(
+                'rewriteRelayed', msg.channel, irc.network)
+            if rewriteRelayed and  'echo-message' in irc.state.capabilities_ack:
+                assert 'labeled-response' in irc.state.capabilities_ack, \
+                    'echo-message was negotiated without labeled-response.'
+                # If we negotiated the echo-message cap, we have to remember
+                # this message was relayed when the server sends it back to us.
+                if 'label' not in msg.server_tags:
+                    msg.server_tags['label'] = ircutils.makeLabel()
+                if msg.tagged('relayedMsg'):
+                    # Remember this was a relayed message, in case
+                    # rewriteRelayed is True.
+                    self._emitted_relayed_msgs[msg.server_tags['label']] = True
+            else:
+                # Else, we can simply rely on internal tags, because echos are
+                # simulated.
+                if msg.tagged('relayedMsg'):
+                    msg.tag('ChannelLogger__relayed')
         return msg
 
 

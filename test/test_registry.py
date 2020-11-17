@@ -182,8 +182,23 @@ class ValuesTestCase(SupyTestCase):
         self.assertTrue(v().match('foo'))
         v.set('')
         self.assertEqual(v(), None)
+
+    def testRegexpSetValue(self):
+        v = registry.Regexp(None, 'help')
+        self.assertRaises(registry.InvalidRegistryValue,
+                          v.setValue, r'foo')
         self.assertRaises(registry.InvalidRegistryValue,
                           v.setValue, re.compile(r'foo'))
+
+    def testRegexpDefaultString(self):
+        v = registry.Regexp('m/foo/', 'help')
+        self.assertEqual(v(), re.compile('foo'))
+
+        v = registry.Regexp('', 'help')
+        self.assertEqual(v(), None)
+
+        v = registry.Regexp(None, 'help')
+        self.assertEqual(v(), None)
 
     def testBackslashesKeys(self):
         conf.supybot.reply.whenAddressedBy.strings.get(':foo').set('=/*')
@@ -199,6 +214,14 @@ class ValuesTestCase(SupyTestCase):
         registry.close(conf.supybot, filename)
         registry.open_registry(filename)
         self.assertEqual(conf.supybot.reply.whenAddressedBy.chars(), '\\')
+
+    def testSpacesValues(self):
+        with conf.supybot.networks.test.password.context(' foo '):
+            self.assertEqual(conf.supybot.networks.test.password(), ' foo ')
+            filename = conf.supybot.directories.conf.dirize('spaces.conf')
+            registry.close(conf.supybot, filename)
+            registry.open_registry(filename)
+            self.assertEqual(conf.supybot.networks.test.password(), ' foo ')
 
     def testWith(self):
         v = registry.String('foo', 'help')

@@ -148,14 +148,14 @@ class Owner(callbacks.Plugin):
     def _connect(self, network, serverPort=None, password='', ssl=False):
         try:
             group = conf.supybot.networks.get(network)
-            (server, port) = group.servers()[0]
+            group.servers()[0]
         except (registry.NonExistentRegistryEntry, IndexError):
             if serverPort is None:
                 raise ValueError('connect requires a (server, port) ' \
                                   'if the network is not registered.')
             conf.registerNetwork(network, password, ssl)
-            serverS = '%s:%s' % serverPort
-            conf.supybot.networks.get(network).servers.append(serverS)
+            server = '%s:%s' % serverPort
+            conf.supybot.networks.get(network).servers.append(server)
             assert conf.supybot.networks.get(network).servers(), \
                    'No servers are set for the %s network.' % network
         self.log.debug('Creating new Irc for %s.', network)
@@ -202,9 +202,7 @@ class Owner(callbacks.Plugin):
                                     utils.str.dqrepr(name))
                             elif "No module named 'config'" in e:
                                 s = ("Failed to load %s: This plugin may be incompatible "
-                                "with your current Python version. If this error is appearing "
-                                "with stock Supybot plugins, remove the stock plugins directory "
-                                "(usually ~/Limnoria/plugins) from 'config directories.plugins'." % name)
+                                     "with your current Python version." % name)
                             else:
                                 s = 'Failed to load %s: import error (%s).' % (name, e)
                             log.warning(s)
@@ -263,7 +261,11 @@ class Owner(callbacks.Plugin):
                                             network=irc.network)
                 self.Proxy(irc, msg, tokens)
             except SyntaxError as e:
-                irc.error(str(e))
+                if conf.supybot.reply.error.detailed():
+                    irc.error(str(e))
+                else:
+                    irc.replyError(msg=msg)
+                    self.log.info('Syntax error: %s', e)
 
     def logmark(self, irc, msg, args, text):
         """<text>

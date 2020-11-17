@@ -37,7 +37,6 @@ import supybot.utils as utils
 import supybot.world as world
 import supybot.ircdb as ircdb
 from supybot.commands import *
-from supybot.utils.iter import all
 import supybot.ircutils as ircutils
 import supybot.registry as registry
 import supybot.callbacks as callbacks
@@ -105,6 +104,15 @@ def isReadOnly(name):
     else:
         return False
 
+def checkCanSetValue(irc, msg, group):
+    if isReadOnly(group._name):
+        irc.error(_("This configuration variable is not writeable "
+            "via IRC. To change it you have to: 1) use the 'flush' command 2) edit "
+            "the config file 3) use the 'config reload' command."), Raise=True)
+    capability = getCapability(irc, group._name)
+    if not ircdb.checkCapability(msg.prefix, capability):
+        irc.errorNoCapability(capability, Raise=True)
+
 def _reload():
     ircdb.users.reload()
     ircdb.ignores.reload()
@@ -163,7 +171,9 @@ class Config(callbacks.Plugin):
                 vname = ':' + vname
             if getattr(v, '_channelValue', False):
                 vname = '#' + vname
-            if v._added and not all(irc.isChannel, v._added):
+            if v._added and not all(
+                    irc.isChannel(child) or child.startswith(':')
+                    for child in v._added):
                 vname = '@' + vname
             L.append(vname)
         utils.sortBy(str.lower, L)
@@ -196,14 +206,52 @@ class Config(callbacks.Plugin):
         L = []
         for (name, x) in conf.supybot.getValues(getChildren=True):
             if word in name.lower():
-                possibleChannel = registry.split(name)[-1]
-                if not irc.isChannel(possibleChannel):
+                last_name_part = registry.split(name)[-1]
+                if not irc.isChannel(last_name_part) \
+                        and not last_name_part.startswith(':'): # network
                     L.append(name)
         if L:
             irc.reply(format('%L', L))
         else:
             irc.reply(_('There were no matching configuration variables.'))
     search = wrap(search, ['lowered']) # XXX compose with withoutSpaces?
+
+    @internationalizeDocstring
+    def searchhelp(self, irc, msg, args, phrase):
+        """<phrase>
+
+        Searches for <phrase> in the help of current configuration variables.
+        """
+        L = []
+        for (name, x) in conf.supybot.getValues(getChildren=True):
+            if phrase in x.help().lower():
+                last_name_part = registry.split(name)[-1]
+                if not irc.isChannel(last_name_part) \
+                        and not last_name_part.startswith(':'): # network
+                    L.append(name)
+        if L:
+            irc.reply(format('%L', L))
+        else:
+            irc.reply(_('There were no matching configuration variables.'))
+    searchhelp = wrap(searchhelp, ['lowered'])
+
+    @internationalizeDocstring
+    def searchvalues(self, irc, msg, args, word):
+        """<word>
+
+        Searches for <word> in the values of current configuration variables.
+        """
+        L = []
+        for (name, x) in conf.supybot.getValues(getChildren=True):
+            if (hasattr(x, 'value') # not a group
+                    and word in str(x()).lower()):
+                last_name_part = registry.split(name)[-1]
+                L.append(name)
+        if L:
+            irc.reply(format('%L', L))
+        else:
+            irc.reply(_('There were no matching configuration variables.'))
+    searchvalues = wrap(searchvalues, ['lowered'])
 
     def _getValue(self, irc, msg, group, network=None, channel=None, addGlobal=False):
         global_group = group
@@ -245,16 +293,9 @@ class Config(callbacks.Plugin):
                       'available in this group.'), Raise=True)
 
     def _setValue(self, irc, msg, group, value):
-        if isReadOnly(group._name):
-            irc.error(_("This configuration variable is not writeable "
-                "via IRC. To change it you have to: 1) use the 'flush' command 2) edit "
-                "the config file 3) use the 'config reload' command."), Raise=True)
-        capability = getCapability(irc, group._name)
-        if ircdb.checkCapability(msg.prefix, capability):
-            # I think callCommand catches exceptions here.  Should it?
-            group.set(value)
-        else:
-            irc.errorNoCapability(capability, Raise=True)
+        checkCanSetValue(irc, msg, group)
+        # I think callCommand catches exceptions here.  Should it?
+        group.set(value)
 
     @internationalizeDocstring
     def channel(self, irc, msg, args, network, channels, group, value):
@@ -426,11 +467,64 @@ class Config(callbacks.Plugin):
         """<name>
 
         Resets the configuration variable <name> to its default value.
+        Use commands 'reset channel' and 'reset network' instead to make
+        a channel- or network- specific value inherit from the global one.
         """
         v = str(group.__class__(group._default, ''))
         self._setValue(irc, msg, group, v)
         irc.replySuccess()
     setdefault = wrap(setdefault, ['settableConfigVar'])
+
+    class reset_(callbacks.Commands):
+        # to prevent conflict with the reset() command of callbacks, this class
+        # is renamed 'reset_'
+        def name(self):
+            return 'reset'
+
+        @internationalizeDocstring
+        def channel(self, irc, msg, args, network, channel, group):
+            """[<network>] [<channel>] <name>
+
+            Resets the channel-specific value of variable <name>, so that
+            it will match the network-specific value (or the global one
+            if the latter isn't set).
+            <network> and <channel> default to the current network and
+            channel.
+            """
+
+            if network != '*':
+                # reset group.:network.#channel
+                netgroup = group.get(':' + network.network)
+                changroup = netgroup.get(channel)
+                checkCanSetValue(irc, msg, changroup)
+                changroup._setValue(netgroup.value, inherited=True)
+
+            # reset group.#channel
+            changroup = group.get(channel)
+            checkCanSetValue(irc, msg, changroup)
+            changroup._setValue(group.value, inherited=True)
+
+            irc.replySuccess()
+        channel = wrap(channel, [
+            optional(first(('literal', '*'), 'networkIrc')),
+            'channel', 'settableConfigVar'])
+
+        @internationalizeDocstring
+        def network(self, irc, msg, args, network, group):
+            """[<network>] [<channel>] <name>
+
+            Resets the network-specific value of variable <name>, so that
+            it will match the global.
+            <network> defaults to the current network and
+            channel.
+            """
+            # reset group.#channel
+            changroup = group.get(':' + network.network)
+            checkCanSetValue(irc, msg, changroup)
+            changroup._setValue(group.value, inherited=True)
+
+            irc.replySuccess()
+        network = wrap(network, ['networkIrc', 'settableConfigVar'])
 
 Class = Config
 

@@ -36,7 +36,7 @@ import codecs
 import string
 import textwrap
 
-from . import utils, i18n
+from . import utils, i18n, ircutils
 from .utils import minisix
 _ = i18n.PluginInternationalization()
 
@@ -103,9 +103,9 @@ def open_registry(filename, clear=False):
         else:
             acc += line
         try:
-            (key, value) = re.split(r'(?<!\\):', acc, 1)
+            (key, value) = re.split(r'(?<!\\): ', acc, 1)
             key = key.strip()
-            value = value.strip()
+            value = value.strip('\r\n')
             value = decoder(value)[0]
             acc = ''
         except ValueError:
@@ -400,6 +400,47 @@ class Value(Group):
                     self._name)
             else:
                 channel = None
+
+        # It may seem weird to check channel/network validity here,
+        # but we need to prevent plugins from passing garbage values.
+        #
+        # For example, LinkRelay has an inFilter() function that called
+        # self.registryValue('...', msg.args[0]) no matter the command. This
+        # means that, every time the bot sends a 'PING :<timestamp>' from to
+        # network, LinkRelayed called
+        # self.registryValue('...', '<timestamp>'), which calls this
+        # function.
+        #
+        # We then get the proper group, and do .get('<timestamp>'), which
+        # causes a new variable to be registered.
+        # And if the values have a high cardinality (eg. with timestamps),
+        # this creates *a lot* of values, thereby leaking megabytes of memory
+        # a week.
+        #
+        # Ideally, we would want to not register these variables, but it's
+        # complicated for multiple reasons, including:
+        #
+        # 1. if two plugins .get() them, store them for a little while, then
+        #    both set them, we have to take care of it.
+        # 2. if <group>.network.channel is modified, then we need to register
+        #    both .channel and .network. (and what if two plugins are doing
+        #    this concurrently with different channels?)
+        # 3. we could also have a task run in the upkeep function, but we have
+        #    issues again with plugins that keep a reference.
+        #
+        # All in all, this is not ideal, but afaict, this is the least bad
+        # solution. And let's hope no one bruteforces valid channel names.
+        # If you have a better solution, please let us know!
+        #
+        # Also, we're setting them to None instead of raising an error in
+        # order not to break existing plugins.
+        if channel and not ircutils.isChannel(channel):
+            channel = None
+        if network:
+            from . import world  # put here to work around circular dependencies
+            if world.getIrc(network) is None:
+                network = None
+
         if network and channel:
             # The complicated case. We want a net+chan specific value,
             # which may come in three different ways:
@@ -442,6 +483,9 @@ class Value(Group):
         """Override this with a function to convert a string to whatever type
         you want, and call self.setValue to set the value."""
         self.setValue(s)
+
+        # redundant as setValue() already sets it, but it avoids really hard
+        # bugs if subclasses mess with _setValue.
         self._wasSet = True
 
     def setValue(self, v):
@@ -705,14 +749,15 @@ class StringWithSpaceOnRight(String):
 
 class Regexp(Value):
     """Value must be a valid regular expression."""
-    __slots__ = ('sr', 'value', '__parent')
     errormsg = _('Value must be a valid regular expression, not %r.')
-    def __init__(self, *args, **kwargs):
-        kwargs['setDefault'] = False
-        self.sr = ''
-        self.value = None
-        self.__parent = super(Regexp, self)
-        self.__parent.__init__(*args, **kwargs)
+
+    def __init__(self, default, *args, **kwargs):
+        # We're not supposed to do convertions here, BUT this is needed
+        # when the value is set programmatically because the value
+        # plugins set (a string) is not the same as the one they get
+        # (a compiled pattern object)
+        default = self._convertFromString(default)
+        super().__init__(default, *args, **kwargs)
 
     def error(self, e):
         s = 'Value must be a regexp of the form m/.../ or /.../. %s' % e
@@ -720,29 +765,48 @@ class Regexp(Value):
         e.value = self
         raise e
 
+    def _convertFromString(self, s):
+        if s:
+            # We need to preserve the original string, as it's shown in
+            # the user interface and the config file.
+            # It might be tempting to set the original string as an
+            # attribute, but doing so would result in inconsistent states
+            # for childs of this variable, should they be reset, or the
+            # value of there parent change.
+            return (s, utils.str.perlReToPythonRe(s))
+        else:
+            return None
+
     def set(self, s):
         try:
-            if s:
-                self.setValue(utils.str.perlReToPythonRe(s), sr=s)
-            else:
-                self.setValue(None)
+            v = self._convertFromString(s)
         except ValueError as e:
             self.error(e)
-
-    def setValue(self, v, sr=None):
-        if v is None:
-            self.sr = ''
-            self.__parent.setValue(None)
-        elif sr is not None:
-            self.sr = sr
-            self.__parent.setValue(v)
         else:
-            raise InvalidRegistryValue('Can\'t setValue a regexp, there would be an inconsistency '\
-                  'between the regexp and the recorded string value.')
+            super().set(v)
+
+    def setValue(self, v):
+        """Don't call this function directly from plugins, it is subject
+        to change without notice."""
+        if v is not None and (not isinstance(v, tuple) or len(v) != 2):
+            raise InvalidRegistryValue(
+                'Can\'t setValue a regexp, there would be an inconsistency '
+                'between the regexp and the recorded string value. '
+                'Use .set() instead.')
+
+        super().setValue(v)
+
+    def __call__(self):
+        if self.value is None:
+            return None
+        else:
+            return self.value[1]
 
     def __str__(self):
-        self() # Gotta update if we've been reloaded.
-        return self.sr
+        if self.value is None:
+            return ''
+        else:
+            return self.value[0]
 
 class SeparatedListOf(Value):
     __slots__ = ()

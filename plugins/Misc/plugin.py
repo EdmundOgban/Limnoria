@@ -172,8 +172,7 @@ class Misc(callbacks.Plugin):
                 # echo [] will get us an empty token set, but there's no need
                 # to log this in that case anyway, it being a nested command.
                 self.log.info('Not replying to %s in %s, not a command.',
-                    tokens[0], channel
-                    if channel != irc.nick else _('private'))
+                    tokens[0], channel or _('private'))
             if irc.nested:
                 bracketConfig = conf.supybot.commands.nested.brackets
                 brackets = bracketConfig.getSpecific(irc.network, channel)()
@@ -296,7 +295,11 @@ class Misc(callbacks.Plugin):
             if cHelp:
                 irc.reply(cHelp)
             else:
-                irc.error()
+                irc.reply(_(
+                    "Use the 'list' command to list all plugins, and "
+                    "'list <plugin>' to list all commands in a plugin. "
+                    "To show the help of a command, use 'help <command>'. "
+                ))
             return
         command = list(map(callbacks.canonicalName, command))
         (maxL, cbs) = irc.findCallbacksForArgs(command)

@@ -36,6 +36,7 @@ import re
 import ssl
 import socket
 import hashlib
+import contextlib
 
 from .web import _ipAddr, _domain
 
@@ -160,44 +161,39 @@ def check_certificate_fingerprint(conn, trusted_fingerprints):
             return
     raise ssl.CertificateError('No matching fingerprint.')
 
-if hasattr(ssl, 'create_default_context'):
-    def ssl_wrap_socket(conn, hostname, logger, certfile=None,
-            trusted_fingerprints=None, verify=True, ca_file=None,
-            **kwargs):
+@contextlib.contextmanager
+def _prefix_ssl_error(prefix):
+    try:
+        yield
+    except ssl.SSLError as e:
+        raise ssl.SSLError(
+            e.args[0], '%s failed: %s' % (prefix, e.args[1]), *e.args[2:]) \
+            from None
+
+def ssl_wrap_socket(conn, hostname, logger, certfile=None,
+        trusted_fingerprints=None, verify=True, ca_file=None,
+        **kwargs):
+    with _prefix_ssl_error('creating SSL context'):
         context = ssl.create_default_context(**kwargs)
-        if trusted_fingerprints or not verify:
-            # Do not use Certification Authorities
-            context.check_hostname = False
-            context.verify_mode = ssl.CERT_NONE
-        if ca_file:
+
+    if ca_file:
+        with _prefix_ssl_error('loading CA certificate'):
             context.load_verify_locations(cafile=ca_file)
-        if certfile:
+    elif trusted_fingerprints or not verify:
+        # Do not use Certification Authorities
+        context.check_hostname = False
+        context.verify_mode = ssl.CERT_NONE
+
+    if certfile:
+        with _prefix_ssl_error('loading client certfile'):
             context.load_cert_chain(certfile)
+
+    with _prefix_ssl_error('establishing TLS connection'):
         conn = context.wrap_socket(conn, server_hostname=hostname)
-        if verify and trusted_fingerprints:
-            check_certificate_fingerprint(conn, trusted_fingerprints)
-        return conn
-else:
-    def ssl_wrap_socket(conn, hostname, logger, verify=True,
-            certfile=None,
-            ca_file=None, trusted_fingerprints=None):
-        # TLSv1.0 is the only TLS version Python < 2.7.9 supports
-        # (besides SSLv2 and v3, which are known to be insecure)
-        try:
-            conn = ssl.wrap_socket(conn,
-                    server_hostname=hostname,
-                    certfile=certfile, ca_certs=ca_file,
-                    ssl_version=ssl.PROTOCOL_TLSv1)
-        except TypeError: # server_hostname is not supported
-            conn = ssl.wrap_socket(conn,
-                    certfile=certfile, ca_certs=ca_file,
-                    ssl_version=ssl.PROTOCOL_TLSv1)
-        if trusted_fingerprints:
-            check_certificate_fingerprint(conn, trusted_fingerprints)
-        elif verify:
-            logger.critical('This Python version does not support SSL/TLS '
-                    'certification authority verification, which makes your '
-                    'connection vulnerable to man-in-the-middle attacks. See: '
-                    '<http://docs.limnoria.net/en/latest/use/security.html#ssl-python-versions>')
-        return conn
+
+    if trusted_fingerprints:
+        check_certificate_fingerprint(conn, trusted_fingerprints)
+
+    return conn
+
 # vim:set shiftwidth=4 softtabstop=4 expandtab textwidth=79:

@@ -164,58 +164,6 @@ def get_template(filename):
         with open(path + '.example', 'r') as fd:
             return fd.read()
 
-class RealSupyHTTPServer(HTTPServer):
-    # TODO: make this configurable
-    timeout = 0.5
-    running = False
-
-    def __init__(self, address, protocol, callback):
-        self.protocol = protocol
-        if protocol == 4:
-            self.address_family = socket.AF_INET
-        elif protocol == 6:
-            self.address_family = socket.AF_INET6
-        else:
-            raise AssertionError(protocol)
-        HTTPServer.__init__(self, address, callback)
-        self.callbacks = {}
-
-    def server_bind(self):
-        if self.protocol == 6:
-            v = conf.supybot.servers.http.singleStack()
-            self.socket.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, v)
-        HTTPServer.server_bind(self)
-
-    def hook(self, subdir, callback):
-        if subdir in self.callbacks:
-            log.warning(('The HTTP subdirectory `%s` was already hooked but '
-                    'has been claimed by another plugin (or maybe you '
-                    'reloaded the plugin and it didn\'t properly unhook. '
-                    'Forced unhook.') % subdir)
-        self.callbacks[subdir] = callback
-        callback.doHook(self, subdir)
-    def unhook(self, subdir):
-        callback = self.callbacks.pop(subdir, None)
-        if callback:
-            callback.doUnhook(self)
-        return callback
-
-    def __str__(self):
-        return 'server at %s %i' % self.server_address[0:2]
-
-class TestSupyHTTPServer(RealSupyHTTPServer):
-    def __init__(self, *args, **kwargs):
-        self.callbacks = {}
-    def serve_forever(self, *args, **kwargs):
-        pass
-    def shutdown(self, *args, **kwargs):
-        pass
-
-if world.testing:
-    SupyHTTPServer = TestSupyHTTPServer
-else:
-    SupyHTTPServer = RealSupyHTTPServer
-
 class SupyHTTPRequestHandler(BaseHTTPRequestHandler):
     def do_X(self, callbackMethod, *args, **kwargs):
         if self.path == '/':
@@ -322,6 +270,10 @@ class SupyHTTPServerCallback(log.Firewalled):
 
     doPost = doGet
 
+    def doWellKnown(self, handler, path):
+        """Handles GET request to /.well-known/"""
+        return None
+
     def doHook(self, handler, subdir):
         """Method called when hooking this callback."""
         pass
@@ -352,7 +304,6 @@ class Supy404(SupyHTTPServerCallback):
 class SupyIndex(SupyHTTPServerCallback):
     """Displays the index of available plugins."""
     name = "index"
-    fullpath = True
     defaultResponse = _("Request not handled.")
     def doGetOrHead(self, handler, path, write_content):
         plugins = [x for x in handler.server.callbacks.items()]
@@ -428,6 +379,83 @@ class Favicon(SupyHTTPServerCallback):
             if write_content:
                 self.wfile.write(response)
 
+class SupyWellKnown(SupyHTTPServerCallback):
+    """Serves /.well-known/ resources."""
+    name = 'well-known'
+    defaultResponse = _('Request not handled')
+
+    def doGetOrHead(self, handler, path, write_content):
+        for callback in handler.server.callbacks.values():
+            resp = callback.doWellKnown(handler, path)
+            if resp:
+                (status, headers, content) = resp
+                handler.send_response(status)
+                for header in headers.items():
+                    self.send_header(*header)
+                self.end_headers()
+                if write_content:
+                    self.wfile.write(content)
+                return
+
+        handler.send_response(404)
+        self.end_headers()
+
+
+DEFAULT_CALLBACKS = {'.well-known': SupyWellKnown()}
+
+
+class RealSupyHTTPServer(HTTPServer):
+    # TODO: make this configurable
+    timeout = 0.5
+    running = False
+
+    def __init__(self, address, protocol, callback):
+        self.protocol = protocol
+        if protocol == 4:
+            self.address_family = socket.AF_INET
+        elif protocol == 6:
+            self.address_family = socket.AF_INET6
+        else:
+            raise AssertionError(protocol)
+        HTTPServer.__init__(self, address, callback)
+        self.callbacks = DEFAULT_CALLBACKS.copy()
+
+    def server_bind(self):
+        if self.protocol == 6:
+            v = conf.supybot.servers.http.singleStack()
+            self.socket.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, v)
+        HTTPServer.server_bind(self)
+
+    def hook(self, subdir, callback):
+        if subdir in self.callbacks:
+            log.warning(('The HTTP subdirectory `%s` was already hooked but '
+                    'has been claimed by another plugin (or maybe you '
+                    'reloaded the plugin and it didn\'t properly unhook. '
+                    'Forced unhook.') % subdir)
+        self.callbacks[subdir] = callback
+        callback.doHook(self, subdir)
+    def unhook(self, subdir):
+        callback = self.callbacks.pop(subdir, None)
+        if callback:
+            callback.doUnhook(self)
+        return callback
+
+    def __str__(self):
+        return 'server at %s %i' % self.server_address[0:2]
+
+class TestSupyHTTPServer(RealSupyHTTPServer):
+    def __init__(self, *args, **kwargs):
+        self.callbacks = {}
+    def serve_forever(self, *args, **kwargs):
+        pass
+    def shutdown(self, *args, **kwargs):
+        pass
+
+if world.testing:
+    SupyHTTPServer = TestSupyHTTPServer
+else:
+    SupyHTTPServer = RealSupyHTTPServer
+
 http_servers = []
 
 def startServer():
@@ -471,6 +499,7 @@ def unhook(subdir):
     assert isinstance(http_servers, list)
     for server in list(http_servers):
         server.unhook(subdir)
-        if len(server.callbacks) <= 0 and not configGroup.keepAlive():
+        if len(set(server.callbacks) - set(DEFAULT_CALLBACKS)) <= 0 \
+                and not configGroup.keepAlive():
             server.shutdown()
             http_servers.remove(server)
