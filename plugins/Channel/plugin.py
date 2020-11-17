@@ -411,17 +411,17 @@ class Channel(callbacks.Plugin):
                        banmask in irc.state.channels[channel].bans:
                         irc.queueMsg(ircmsgs.unban(channel, banmask))
                 schedule.addEvent(f, expiry)
-        if bannedNick == msg.nick:
+        if bannedNick == msg.nick or ircdb.checkCapability(msg.prefix, capability):
             doBan()
-        elif ircdb.checkCapability(msg.prefix, capability):
-            if ircdb.checkCapability(bannedHostmask, capability) and \
-                    not ircdb.checkCapability(msg.prefix, 'owner'):
-                self.log.warning('%s tried to ban %q, but both have %s',
-                                 msg.prefix, bannedHostmask, capability)
-                irc.error(format(_('%s has %s too, you can\'t ban '
-                                 'them.'), bannedNick, capability))
-            else:
-                doBan()
+        # elif ircdb.checkCapability(msg.prefix, capability):
+            # if ircdb.checkCapability(bannedHostmask, capability) and \
+                    # not ircdb.checkCapability(msg.prefix, 'owner'):
+                # self.log.warning('%s tried to ban %q, but both have %s',
+                                 # msg.prefix, bannedHostmask, capability)
+                # irc.error(format(_('%s has %s too, you can\'t ban '
+                                 # 'them.'), bannedNick, capability))
+            # else:
+                # doBan()
         else:
             self.log.warning('%q attempted kban without %s',
                              msg.prefix, capability)
