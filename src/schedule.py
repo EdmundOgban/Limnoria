@@ -37,7 +37,7 @@ from __future__ import with_statement
 import time
 import heapq
 import functools
-from threading import Lock
+from threading import Lock, Thread
 
 from . import drivers, log, world
 
@@ -76,7 +76,7 @@ class Schedule(drivers.IrcDriver):
     def name(self):
         return 'Schedule'
 
-    def addEvent(self, f, t, name=None, args=[], kwargs={}):
+    def addEvent(self, f, t, name=None, threaded=False, args=[], kwargs={}):
         """Schedules an event f to run at time t.
 
         name must be hashable and not an int.
@@ -88,7 +88,7 @@ class Schedule(drivers.IrcDriver):
                'An event with the same name has already been scheduled.'
         with self.lock:
             self.events[name] = f
-            heapq.heappush(self.schedule, mytuple((t, name, args, kwargs)))
+            heapq.heappush(self.schedule, mytuple((t, name, threaded, args, kwargs)))
         return name
 
     def removeEvent(self, name):
@@ -104,13 +104,17 @@ class Schedule(drivers.IrcDriver):
             heapq.heapify(self.schedule)
         return f
 
-    def rescheduleEvent(self, name, t):
+    def rescheduleEvent(self, name, t, threaded=False):
         f = self.removeEvent(name)
-        self.addEvent(f, t, name=name)
+        self.addEvent(f, t, name=name, threaded=threaded)
 
-    def addPeriodicEvent(self, f, t, name=None, now=True, args=[], kwargs={},
+    def addPeriodicEvent(self, f, t, name=None, threaded=False, now=True, args=[], kwargs={},
             count=None):
         """Adds a periodic event that is called every t seconds."""
+        if name is None:
+            name = self.counter
+            self.counter += 1
+
         def wrapper(count):
             try:
                 f(*args, **kwargs)
@@ -119,14 +123,32 @@ class Schedule(drivers.IrcDriver):
                 if count[0] is not None:
                     count[0] -= 1
                 if count[0] is None or count[0] > 0:
-                    return self.addEvent(wrapper, time.time() + t, name)
+                    self.addEvent(wrapper, time.time() + t, name, threaded)
+
         wrapper = functools.partial(wrapper, [count])
         if now:
-            return wrapper()
+            self._execute(wrapper, name, threaded=threaded)
         else:
-            return self.addEvent(wrapper, time.time() + t, name)
+            self.addEvent(wrapper, time.time() + t, name, threaded)
+
+        return name
 
     removePeriodicEvent = removeEvent
+
+    def _execute(self, f, name, args=[], kwargs={}, threaded=False):
+        def runf(f, args, kwargs):
+            try:
+                f(*args, **kwargs)
+            except Exception:
+                log.exception('Uncaught exception in scheduled function:')
+
+        if threaded:
+            tname = "Scheduler-{}".format(name)
+            worker = Thread(target=runf, name=tname, args=(f, args, kwargs), daemon=True)
+            worker.start()
+            world.threadsSpawned += 1
+        else:
+            runf(f, args, kwargs)
 
     def run(self):
         if len(drivers._drivers) == 1 and not world.testing:
@@ -135,12 +157,10 @@ class Schedule(drivers.IrcDriver):
             time.sleep(1) # We're the only driver; let's pause to think.
         while self.schedule and self.schedule[0][0] < time.time():
             with self.lock:
-                (t, name, args, kwargs) = heapq.heappop(self.schedule)
+                (t, name, threaded, args, kwargs) = heapq.heappop(self.schedule)
                 f = self.events.pop(name)
-            try:
-                f(*args, **kwargs)
-            except Exception:
-                log.exception('Uncaught exception in scheduled function:')
+
+            self._execute(f, name, args, kwargs, threaded)
 
 
 schedule = Schedule()

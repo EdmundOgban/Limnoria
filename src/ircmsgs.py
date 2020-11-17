@@ -46,6 +46,7 @@ from . import conf, ircutils, utils
 from .utils.iter import all
 from .utils import minisix
 
+
 ###
 # IrcMsg class -- used for representing IRC messages acquired from a network.
 ###

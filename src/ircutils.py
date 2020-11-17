@@ -628,23 +628,29 @@ def wrap(s, length, break_on_hyphens = False):
     parser = FormatParser(s)
     parser.parse()
     format_overhead = parser.max_context_size
-
+    chunks = []
     processed = []
-    chunks = utils.str.byteTextWrap(s, length - format_overhead)
+    for ss in s.split("\n"):
+        chunks.extend(utils.str.byteTextWrap(ss, length - format_overhead))
+
     context = None
     for chunk in chunks:
         if context is not None:
             chunk = context.start(chunk)
         context = FormatParser(chunk).parse()
         processed.append(context.end(chunk))
+
     return processed
 
-def isValidArgument(s):
-    """Returns whether s is strictly a valid argument for an IRC message.
-       Don't worry about the \n, it'll be removed later after splitting. """
-    return '\r' not in s and '\x00' not in s # and '\n' not in s
+def isValidArgument(s, linefeed=True):
+    """Returns whether s is strictly a valid argument for an IRC message. """
+    bogus = ["\r", "\00"]
+    if linefeed:
+        bogus.append("\n")
 
-def safeArgument(s):
+    return all(c not in s for c in bogus)
+
+def safeArgument(s, linefeed=True):
     """If s is unsafe for IRC, returns a safe version."""
     if minisix.PY2 and isinstance(s, unicode):
         s = s.encode('utf-8')
@@ -652,7 +658,7 @@ def safeArgument(s):
             (minisix.PY3 and not isinstance(s, str)):
         debug('Got a non-string in safeArgument: %r', s)
         s = str(s)
-    if isValidArgument(s):
+    if isValidArgument(s, linefeed):
         return s
     else:
         return repr(s)
@@ -825,6 +831,28 @@ for (k, v) in list(mircColors.items()):
         sv = str(v)
         mircColors[sv] = sv
         mircColors[sv.zfill(2)] = sv
+
+
+def global_env(irc):
+    callbacks = {callback.name(): callback for callback in irc.callbacks}
+    try:
+        genv = callbacks["GlobalEnv"]
+    except KeyError:
+        return
+    else:
+        return genv
+
+
+def channel_env(irc, channel):
+    channel = channel.lower()
+    chanenv = None
+    if irc.isChannel(channel):
+        genv = global_env(irc)
+        if genv is not None:
+            chanenv = genv._env(irc.network, channel)
+
+    return chanenv
+
 
 def standardSubstitute(irc, msg, text, env=None):
     """Do the standard set of substitutions on text, and return it"""

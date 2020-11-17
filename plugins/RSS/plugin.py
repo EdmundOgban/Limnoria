@@ -40,6 +40,8 @@ import socket
 import threading
 import feedparser
 
+import urllib.parse as urlparse
+
 import supybot.conf as conf
 import supybot.utils as utils
 import supybot.world as world
@@ -62,7 +64,8 @@ if minisix.PY2:
 else:
     from urllib.request import ProxyHandler
 
-from .config import register_feed_config
+from .config import register_feed_config, normalize_feedName
+
 
 def get_feedName(irc, msg, args, state):
     if irc.isChannel(args[0]):
@@ -70,7 +73,7 @@ def get_feedName(irc, msg, args, state):
     if not registry.isValidRegistryName(args[0]):
         state.errorInvalid('feed name', args[0],
                            'Feed names must not include spaces.')
-    state.args.append(callbacks.canonicalName(args.pop(0)))
+    state.args.append(args.pop(0))
 addConverter('feedName', get_feedName)
 
 announced_headlines_filename = \
@@ -103,10 +106,10 @@ class InvalidFeedUrl(ValueError):
     pass
 
 class Feed:
-    __slots__ = ('url', 'name', 'data', 'last_update', 'entries',
-            'etag', 'modified', 'initial',
+    __slots__ = ('url', 'name', 'pretty_name', 'data', 'last_update',
+            'entries', 'etag', 'modified', 'initial',
             'lock', 'announced_entries', 'last_exception')
-    def __init__(self, name, url, initial,
+    def __init__(self, name, pretty_name, url, initial,
             plugin_is_loading=False, announced=None):
         assert name, name
         if not url:
@@ -114,6 +117,7 @@ class Feed:
         if not utils.web.httpUrlRe.match(url):
             raise InvalidFeedUrl(url)
         self.name = name
+        self.pretty_name = pretty_name
         self.url = url
         self.initial = initial
         self.data = None
@@ -198,7 +202,7 @@ class RSS(callbacks.Plugin):
             self._init_time = 0
 
         # Scheme: {name: url}
-        self.feed_names = callbacks.CanonicalNameDict()
+        self.feed_names = {} #callbacks.CanonicalNameDict()
         # Scheme: {url: feed}
         self.feeds = {}
         if os.path.isfile(announced_headlines_filename):
@@ -248,8 +252,9 @@ class RSS(callbacks.Plugin):
 
     def register_feed(self, name, url, initial,
             plugin_is_loading, announced=None):
+        pretty_name = name
         self.feed_names[name] = url
-        self.feeds[url] = Feed(name, url, initial,
+        self.feeds[url] = Feed(name, pretty_name, url, initial,
                 plugin_is_loading, announced)
 
     def remove_feed(self, feed):
@@ -413,6 +418,16 @@ class RSS(callbacks.Plugin):
                 return False
         return True
 
+    def _remove_tracking(self, entry):
+        url = entry["link"]
+        splt = list(urlparse.urlsplit(url))
+        query = splt[3]
+        ql = urlparse.parse_qsl(query)
+        ql = [(a, b) for a, b in ql if not a.startswith("utm_")]
+        splt[3] = "&".join('{}={}'.format(a, b or '') for a, b in ql)
+        entry["link"] = urlparse.urlunsplit(splt)
+        return entry
+
     _normalize_entry = utils.str.multipleReplacer(
             {'\r': ' ', '\n': ' ', '\x00': ''})
     def format_entry(self, network, channel, feed, entry, is_announce):
@@ -425,10 +440,11 @@ class RSS(callbacks.Plugin):
         else:
             template = self.registryValue(key_name, channel, network)
         date = entry.get('published_parsed')
+        entry = self._remove_tracking(entry)
         date = utils.str.timestamp(date)
         s = string.Template(template).substitute(
                 entry,
-                feed_name=feed.name,
+                feed_name=feed.pretty_name,
                 date=date)
         return self._normalize_entry(s)
 
@@ -446,15 +462,16 @@ class RSS(callbacks.Plugin):
     # Commands
 
     @internationalizeDocstring
-    def add(self, irc, msg, args, name, url):
+    def add(self, irc, msg, args, pretty_name, url):
         """<name> <url>
 
         Adds a command to this plugin that will look up the RSS feed at the
         given URL.
         """
+        name = pretty_name.lower()
         self.assert_feed_does_not_exist(name, url)
         register_feed_config(name, url)
-        self.register_feed(name, url, True, False)
+        self.register_feed(name, pretty_name, url, True, False)
         irc.replySuccess()
     add = wrap(add, ['feedName', 'url'])
 
@@ -570,7 +587,7 @@ class RSS(callbacks.Plugin):
         try:
             feed = self.get_feed(url)
             if not feed:
-                feed = Feed(url, url, True)
+                feed = Feed(url, url, url, True)
         except InvalidFeedUrl:
             irc.error('%s is not a valid feed URL or name.' % url, Raise=True)
         channel = msg.channel
@@ -590,8 +607,10 @@ class RSS(callbacks.Plugin):
         entries = entries[:n]
         headlines = map(lambda e:self.format_entry(irc.network, channel, feed, e, False),
                         entries)
-        sep = self.registryValue('headlineSeparator', channel, irc.network)
-        irc.replies(headlines, joiner=sep)
+        #sep = self.registryValue('headlineSeparator', channel, irc.network)
+        #irc.replies(headlines, joiner=sep)
+        for headline in headlines:
+            irc.reply(headline)
     rss = wrap(rss, [first('url', 'feedName'), additional('int')])
 
     @internationalizeDocstring

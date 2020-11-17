@@ -48,7 +48,7 @@ FTP_HOST = 'sooon.altervista.org'
 BASE_URL = FTP_HOST
 STATS_PATH = '/stats'
 STATS_URL = 'http://{}{}/%s.html'.format(BASE_URL, STATS_PATH)
-STATS_DELAY = 3600 # in seconds
+STATS_DELAY = 10800 # in seconds
 
 
 class StatsGeneratorAndUploader(object):
@@ -98,7 +98,7 @@ class PisgStats(callbacks.Plugin):
         self.active_stats = self._parse_active()
         self.generator = StatsGeneratorAndUploader(self.event_name,
                                                    self.active_stats)
-        #self._schedule()
+        self._schedule()
 
     def _parse_active(self):
         L = []
@@ -109,7 +109,8 @@ class PisgStats(callbacks.Plugin):
         return L
 
     def _schedule(self):
-        id = schedule.addPeriodicEvent(self.generator, STATS_DELAY, self.event_name)
+        id = schedule.addPeriodicEvent(self.generator, STATS_DELAY, self.event_name,
+            threaded=True)
         if id is None:
             self.log.info('Event %s was already scheduled. '
                           'Removing and rescheduling.' % self.event_name)
@@ -122,6 +123,11 @@ class PisgStats(callbacks.Plugin):
         """ generate stats """
         self.generator()
         irc.reply('Statistics generation done.')
+
+    @wrap(['owner'])
+    def sendstats(self, irc, msg, args):
+        """ manually upload stats """
+        self.generator._upload()
 
     def chanstats(self, irc, msg, args):
         """ show stats link """

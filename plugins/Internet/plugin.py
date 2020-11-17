@@ -28,6 +28,8 @@
 # POSSIBILITY OF SUCH DAMAGE.
 ###
 
+import fnmatch
+import gzip
 import time
 import socket
 import telnetlib
@@ -47,10 +49,27 @@ import supybot.plugins as plugins
 import supybot.callbacks as callbacks
 from supybot.commands import *
 from supybot.utils.iter import any as supyany
+from supybot.utils import minisix
 from supybot.i18n import PluginInternationalization, internationalizeDocstring
 _ = PluginInternationalization('Internet')
 
+if minisix.PY2:
+    builtins = __builtins__
+else:
+    import builtins
+
 from . import htmlcolors
+
+
+TITLEABLE_URLS = set([
+    "?*.reddit.com", "redd.it", "?*.redd.it",
+    "spotify.com", "*.spotify.com",
+    "stackoverflow.com", "serverfault.com",
+])
+YOUTUBE_URLS = set([
+    "?*.youtube.com", "youtube.com", "youtu.be"
+])
+
 
 class Internet(callbacks.Plugin):
     """Provides commands to query DNS, search WHOIS databases,
@@ -59,7 +78,10 @@ class Internet(callbacks.Plugin):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self._urlsnarf_re = re.compile(r'(https?://\S+\.\S{2,})')
+        URL_SAFECHARS = r"A-Za-z0-9_~.\-;/?:@=&%()#"
+        TLD_SAFECHARS = r"A-Za-z0-9{2,}"
+        self._urlsnarf_re = re.compile("(https?://[{0}]+\.[{1}]{{2,}}[{0}]*)".format(
+            URL_SAFECHARS, TLD_SAFECHARS))
         self._supported_content = ["text/html"]
         self._last_url = dict()
         self._last_tweet_url = dict()
@@ -294,9 +316,13 @@ class Internet(callbacks.Plugin):
 
             buf += data
             tries += 1
+            if buf[0] == 0x1F and buf[1] == 0x8B:
+                buf += urlh.read()
+                buf = gzip.decompress(buf)
+
             yield buf
 
-    def _title(self, url):
+    def _title(self, url, *, youtube=False, autotitle=False):
         L = list(urlparse.urlsplit(url))
         L[1] = L[1].encode('idna').decode('ascii')
         url = urlparse.urlunsplit(L)
@@ -304,37 +330,45 @@ class Internet(callbacks.Plugin):
         try:
             urlh = self._urlget(url)
         except urllib.error.HTTPError as e:
-            if e.code in (403, 404, 502):
+            if e.code in (403, 404, 502, 503):
                 urlh = self._urlget(url, browser_ua=True)
             else:
                 raise
 
         info = urlh.info()
         if info.get_content_type() not in self._supported_content:
-            s = "(%s): Content-Type: %s - Content-Length: %s"
-            return s % (utils.str.shorten(url), info["Content-Type"], info["Content-Length"])
+            if autotitle:
+                return
+            s = "<%s>: Content-Type: %s - Content-Length: %s"
+            return s % (url, info["Content-Type"], info["Content-Length"])
+
+        try:
+            charset = info.get_charsets()[0] or "utf8"
+        except IndexError:
+            charset = "ascii"
 
         #soup = BS(urlh, parse_only=SoupStrainer('title', limit=1))
         #if soup.text:
         #    title_text = html.unescape(soup.text)
         #    return "Title (%s): %s" % (utils.str.shorten(url), title_text)
-
+        match_text = ""
         for webpage in self._read_chunked(urlh):
-            mtch = re.search(b"<title[^>]*>(.+?(?=</title>))", webpage, re.DOTALL | re.I)
-            mtch2 = re.search(b"<meta property=['\"]og:title['\"] content=['\"]([^'\"]+)['\"]", webpage, re.DOTALL | re.I)
-            if mtch or mtch2:
-                try:
-                    charset = info.get_charsets()[0] or "utf8"
-                except IndexError:
-                    charset = "ascii"
-
-                if mtch and mtch2:
-                    match_text = mtch.group(1)
+            title = re.search(b"<title[^>]*>(.+?(?=</title>))", webpage, re.DOTALL | re.I)
+            meta = re.search(b"<meta property=['\"]og:title['\"] content=['\"]([^'\"]+)['\"]", webpage, re.DOTALL | re.I)
+            if youtube:
+                if meta:
+                    match_text = meta.group(1)
+            elif title or meta:
+                if title and meta:
+                    match_text = title.group(1)
+                elif meta:
+                    match_text = meta.group(1)
                 else:
-                    match_text = (mtch2 or mtch).group(1)
+                    match_text = (meta or title).group(1)
 
+            if match_text:
                 title_text = html.unescape(match_text.strip().decode(charset))
-                return "Title <%s>: %s" % (utils.str.shorten(url), title_text)
+                return "Title <%s>: %s" % (utils.str.shorten(url, 45), title_text)
 
     def _checkpoint(self):
         t = time.monotonic() - self._t
@@ -345,6 +379,7 @@ class Internet(callbacks.Plugin):
     @wrap(['channeldb', optional('text')])
     def title(self, irc, msg, args, channel, address):
         """ [url] """
+        channel = channel.lower()
         last_url = self._last_url.get(channel)
         url = self._address_or_lasturl(address, last_url)
         if url is None:
@@ -362,6 +397,8 @@ class Internet(callbacks.Plugin):
     ##https://twitter.com/GDGC240977/status/1267546417473748992
     ##https://twitter.com/PlayStation/status/1267525525825900549
     ##https://twitter.com/Dark_Tesla/status/1267551166864461826
+    ## FAIL: https://twitter.com/nick_kapur/status/1283261781008437248
+    ## FAIL: https://twitter.com/jasonschreier/status/1285527461300711424
     def _tweet(self, url):
         # Replace *twitter.com with mobile.twitter.com
         urlsplt = list(urlparse.urlsplit(url))
@@ -369,7 +406,10 @@ class Internet(callbacks.Plugin):
         url = urlparse.urlunsplit(urlsplt)
 
         soup = BS(self._urlget(url))
-        topdoc = soup.find("table", class_="main-tweet")       
+        topdoc = soup.find("table", class_="main-tweet")
+        if topdoc is None:
+            return
+
         header = topdoc.find("tr")
         tweet_content = topdoc.find("td", class_="tweet-content")
         try:
@@ -410,7 +450,10 @@ class Internet(callbacks.Plugin):
 
             if has_video is False:
                 for img in tweet_content.findAll("img"):
-                    url = img["src"].rsplit(":", 1)[0]
+                    url = img["src"]
+                    if url.count(":") > 1:
+                        url = url.rsplit(":", 1)[0]
+
                     content.append(url.strip())
 
             return name, account, " ".join(content)
@@ -430,6 +473,7 @@ class Internet(callbacks.Plugin):
     @wrap(['channeldb', optional('text')])
     def tweet(self, irc, msg, args, channel, address):
         """ [url] """
+        channel = channel.lower()
         last_url = self._last_tweet_url.get(channel)
         url = self._address_or_lasturl(address, last_url)
         if url is None:
@@ -443,12 +487,14 @@ class Internet(callbacks.Plugin):
     @wrap(['channeldb'])
     def lasturl(self, irc, msg, args, channel):
         """ """
+        channel = channel.lower()
         if channel in self._last_url:
             irc.reply(self._last_url[channel], prefixNick=True)
 
     @wrap(['channeldb'])
     def lasttweet(self, irc, msg, args, channel):
         """ """
+        channel = channel.lower()
         if channel in self._last_tweet_url:
             irc.reply(self._last_tweet_url[channel], prefixNick=True)
 
@@ -482,10 +528,11 @@ class Internet(callbacks.Plugin):
             irc.reply(htmlcolors.rgb(*args), prefixNick=True)
 
     def _snarfUrl(self, network, channel, text):
+        channel = channel.lower()
         res = self._urlsnarf_re.search(ircutils.stripFormatting(text))
         if res:
             url = utils.str.try_coding(res.group(1))
-            splitresult = urllib.parse.urlsplit(url)
+            splitresult = urlparse.urlsplit(url)
             if splitresult.netloc.endswith("twitter.com"):
                 self._last_tweet_url[channel] = url
             else:
@@ -494,7 +541,7 @@ class Internet(callbacks.Plugin):
             return url, splitresult
 
     def _autotitle_snarf(self, irc, msg, text):
-        channel = plugins.getChannel(msg.args[0])
+        channel = plugins.getChannel(msg.args[0]).lower()
         splitresult = self._snarfUrl(irc.network, channel, text)
         botNicks = self.registryValue("botNames", channel).split()
         if supyany(msg.nick.startswith, botNicks):
@@ -503,11 +550,17 @@ class Internet(callbacks.Plugin):
         if splitresult:
             text = None
             url, urlsplt = splitresult
-            isYtUrl = urlsplt.netloc in ("www.youtube.com", "youtube.com", "youtu.be")
+            isYtUrl = builtins.any(fnmatch.fnmatch(urlsplt.netloc, url_wcard)
+                for url_wcard in YOUTUBE_URLS)
+            isTitleableUrl = builtins.any(fnmatch.fnmatch(urlsplt.netloc, url_wcard)
+                for url_wcard in TITLEABLE_URLS)
             isTweetUrl = urlsplt.netloc.endswith("twitter.com")
-            if urlsplt.path.lstrip("/") or urlsplt.query:
-                if isYtUrl and self.registryValue("ytAutoTitle", channel):
-                    text = self._title(url)
+            if ((urlsplt.path.lstrip("/") or urlsplt.query)
+                and self.registryValue("ytAutoTitle", channel)):
+                if isYtUrl:
+                    text = self._title(url, youtube=True, autotitle=True)
+                elif isTitleableUrl:
+                    text = self._title(url, autotitle=True)
                 elif isTweetUrl: # and self.registryValue("autoTweet", channel):
                     res = self._tweet(url)
                     if res:
@@ -560,7 +613,8 @@ class Internet(callbacks.Plugin):
         r = []
         for result in results:
             anchor = result.find("a", class_="result__a")
-            if anchor is None:
+            ad = result.find("a", class_="badge--ad")
+            if anchor is None or ad:
                 continue
 
             description = result.find("a", class_="result__snippet")
@@ -572,17 +626,31 @@ class Internet(callbacks.Plugin):
 
         return r
 
+    def _pre_command(self, text):
+        text = text or ""
+        try:
+            opt, text = text.split(":", 1)
+            opt = int(opt)
+        except ValueError:
+            opt = 0
+
+        text = ircutils.stripFormatting(text.lower().strip())
+        return text, opt
+
     @wrap(["text"])
     def ddg(self, irc, msg, args, text):
         """<search>
 
         Searches duckduckgo.com for the given string.
         """
+        text, idx = self._pre_command(text)
+
         try:
-            result = self._ddg(text)[0]
+            result = self._ddg(text)[idx]
         except IndexError:
             irc.reply("Can't find what you are looking for.")
         else:
+            
             text = utils.str.shorten(text, 30)
             title = ircutils.bold(result["title"])
             url = result["url"]

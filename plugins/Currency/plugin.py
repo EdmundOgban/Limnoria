@@ -47,9 +47,24 @@ class Currency(callbacks.Plugin):
     """Cryptocurrencies statistics"""
     threaded = True
 
-    @wrap([optional('somethingWithoutSpaces'), additional('float')])
-    def coin(self, irc, msg, args, coin, qty):
-        """ [coin] """
+    @wrap([optional('somethingWithoutSpaces'), additional('somethingWithoutSpaces')])
+    def coin(self, irc, msg, args, a1, a2):
+        """ [coin] | <qty> <coin> """
+        coin = None
+        qty = 0
+
+        if a1 or a2:
+            try:
+                qty, coin = float(a1), a2
+            except ValueError:
+                if a2 is None:
+                    qty, coin = None, a1
+                else:
+                    try:
+                        qty, coin = float(a2), a1
+                    except ValueError:
+                        return
+
         if coin:
             res = litebit.scrape([coin])
         else:

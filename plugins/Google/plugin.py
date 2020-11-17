@@ -47,6 +47,7 @@ from supybot.i18n import PluginInternationalization, internationalizeDocstring
 _ = PluginInternationalization('Google')
 
 from . import tr_langs
+from . import ytsearch
 from .google import translate as gtranslate
 
 
@@ -372,6 +373,8 @@ class Google(callbacks.PluginRegexp):
         codes (not language names), which are listed here:
         https://cloud.google.com/translate/docs/languages
         """
+        chanenv = ircutils.channel_env(irc, channel)
+        text = ircutils.standardSubstitute(irc, msg, text, env=chanenv)
         provided_sl, provided_tl, text = self._tr_parse(text)
         default_sl = self.registryValue('sourceLang', channel) or "auto"
         default_tl = self.registryValue('targetLang', channel) or "en"
@@ -398,7 +401,7 @@ class Google(callbacks.PluginRegexp):
         elems = list(tr_langs.langs)
         elems.remove("auto")
         path = ["auto"]
-        top = random.randint(3, min(25, len(elems)))
+        top = random.randint(6, min(15, len(elems)))
         for _ in range(top):
             chosen = random.choice(elems)
             path.append(chosen)
@@ -407,6 +410,8 @@ class Google(callbacks.PluginRegexp):
         return path
 
     def doPrivmsg(self, irc, msg):
+        text = ' '.join(msg.args[1:])
+        #logtext = text.replace("%", "")
         if not irc.isChannel(msg.args[0]):
             return
 
@@ -414,29 +419,36 @@ class Google(callbacks.PluginRegexp):
             return
 
         channel = plugins.getChannel(msg.args[0])
-        self._last_msg[irc.network][channel] = " ".join(msg.args[1:])
+        channel = channel.lower()
+        self._last_msg[irc.network][channel] = text
 
-    @wrap(['channeldb', optional('text')])
-    def randtr(self, irc, msg, args, channel, text):
-        """ [text] """        
-        text = text or self._last_msg[irc.network].get(channel)
+    @wrap([optional('text')])
+    def randtr(self, irc, msg, args, text):
+        """ [text] """
+
+        recipient = msg.args[0].lower()
+        if irc.isChannel(recipient):
+            if text is None:
+                text = self._last_msg[irc.network].get(recipient)
+            else:
+                chanenv = ircutils.channel_env(irc, recipient)
+                text = ircutils.standardSubstitute(irc, msg, text, env=chanenv)
+
         if not text:
             return
+
         path = self._rndlangs()
         sl, _, trs = gtranslate.tr('auto', 'it', q=text)
-        if not trs:
-            irc.reply(text)
-            return
-
         path.append(sl)
         for idx in range(len(path)-1):
             sl, tl = path[idx], path[idx+1]
-            self.log.info(">>> Translate {} to {} '{}'".format(sl, tl, text))
+            self.log.info(">>> Translate {} to {} '{}'".format(sl, tl, text.replace("%", "")))
             _, _, text = gtranslate.tr(sl, tl, q=text)
             text = text[0]
 
-        round_ = 'round' if len(path) == 1 else 'rounds'
-        irc.reply("{} ({} {})".format(text, len(path), round_))
+        #round_ = 'round' if len(path) == 1 else 'rounds'
+        #irc.reply("{} ({} {})".format(text, len(path), round_))
+        irc.reply(text)
 
     def googleSnarfer(self, irc, msg, match):
         r"^google\s+(.*)$"
@@ -510,6 +522,34 @@ class Google(callbacks.PluginRegexp):
             irc.reply(_('Google\'s phonebook didn\'t come up with anything.'))
     phonebook = wrap(phonebook, ['text'])
 
+    _YOUTUBE_URL = "https://youtube.com"
+    @wrap(['text'])
+    def youtube(self, irc, msg, args, query, idx=None):
+        """ <query> """
+        if idx is None:
+            idx = 1
+
+        pre = "YouTube ({}):".format(utils.str.shorten(query, 24))
+        result = ytsearch.search(query, idx)
+        if result is None:
+            irc.reply(" ".join([pre, "No results found."]))
+            return
+
+        url, kind, title, uploaded_by, verified, metrics, runtime = result
+        surl = "<{}{}>".format(self._YOUTUBE_URL, url)
+        verified = "✓" if verified is True else ""
+        if kind == "playlist":
+            desc = "{bold}{}{bold} by {}{} ({}, {} videos)".format(
+                title, verified, uploaded_by, runtime, metrics, bold="")
+        elif kind == "channel":
+            desc = "{bold}{} {}{bold} - {}".format(
+                verified, title, metrics, bold="")
+        elif kind in ("radio", "video"):
+            desc = "{bold}{}{bold} by {}{} ({}, {})".format(
+                title, verified, uploaded_by, runtime, metrics, bold="")
+
+        irc.reply(" ".join([pre, surl, desc]))
+
     _gautocompleteUrl = 'https://suggestqueries.google.com/complete/search?client=firefox&q=%s'
     @wrap(['text'])
     def autocomplete(self, irc, msg, args, text):
@@ -521,7 +561,7 @@ class Google(callbacks.PluginRegexp):
             irc.error(e)
         else:
             t = text.lower()
-            s = ", ".join(
+            s = ",  ".join(
                 "\u2026{}".format(removeprefix(a, t)) if a.startswith(t) else a
                 for a in aut if a != t
             )

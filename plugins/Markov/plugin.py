@@ -376,6 +376,31 @@ class Markov(callbacks.Plugin):
         if not text:
             return
 
+        if (msg.nick in ("excarcerato_tatuato",)
+            and not callbacks.addressed(irc.nick, msg)
+            and random.random() > 0.15
+            and len(text) > 5):
+            from supybot.plugins.Google import translate as gtranslate
+
+            cbs = {callback.name(): callback for callback in irc.callbacks}
+            google = cbs.get("Google")
+            if google:
+                kov = self._markov(channel, text)
+                if kov.startswith("Error:"):
+                    kov = text
+                    
+                path = google._rndlangs()
+                sl, _, trs = gtranslate.tr('auto', 'it', q=kov)
+                path.append(sl)
+                for idx in range(len(path)-1):
+                    sl, tl = path[idx], path[idx+1]
+                    _, _, kov = gtranslate.tr(sl, tl, q=kov)
+                    kov = kov[0]
+                if random.random() > 0.4:
+                    irc.reply("{} {}".format(msg.nick, kov))
+                else:
+                    irc.reply(kov)
+
         if not (self.registryValue('ignoreBotCommands', channel) and
                 callbacks.addressed(irc.nick, msg)):
             self.db.add(channel, text)

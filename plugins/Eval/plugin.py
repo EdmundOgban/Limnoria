@@ -33,6 +33,7 @@ from supybot.commands import *
 import supybot.plugins as plugins
 import supybot.ircutils as ircutils
 import supybot.irclib as irclib
+import supybot.ircmsgs as ircmsgs
 import supybot.ircdb as ircdb
 import supybot.callbacks as callbacks
 import supybot.log as log
@@ -48,7 +49,6 @@ except ImportError:
 import io
 import code
 import codecs
-import hashlib
 import os
 import sys
 import traceback
@@ -61,10 +61,7 @@ import re
 
 import Pyro4
 
-from subprocess import Popen, PIPE
-from random import randint, choice
-from bs4 import BeautifulSoup as BS
-from base64 import urlsafe_b64encode, urlsafe_b64decode
+#from base64 import urlsafe_b64encode, urlsafe_b64decode
 from collections import defaultdict, deque
 from functools import partial
 
@@ -72,26 +69,26 @@ from functools import partial
 # from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 # import cryptography.exceptions
 
-def decode_authenticated_message(key, authmessage, tag=None, separator='.'):
-    aesgcm = AESGCM(key)
-    encoded_ct, encoded_nonce = authmessage.split(separator)
-    ct = urlsafe_b64decode(encoded_ct)
-    nonce = urlsafe_b64decode(encoded_nonce)
-    plaintext = aesgcm.decrypt(nonce, ct, tag)
-    return plaintext
+#def decode_authenticated_message(key, authmessage, tag=None, separator='.'):
+#    aesgcm = AESGCM(key)
+#    encoded_ct, encoded_nonce = authmessage.split(separator)
+#    ct = urlsafe_b64decode(encoded_ct)
+#    nonce = urlsafe_b64decode(encoded_nonce)
+#    plaintext = aesgcm.decrypt(nonce, ct, tag)
+#    return plaintext
 
 
 def _py_parser(s):
-    if len(s.split()) == 1:
+    if len(s.split()) <= 1:
         return "\n"
 
     # strip command, preserve leading spaces
-    text = re.sub("^[^\s]+\s", "", s)
-    if text == "\\n":
-        return "\n"
+    #text = re.sub("^[^\s]+\s", "", s)
+    #if text == "\\n":
+    #    return "\n"
 
     # replace \\t with an actual \t, only if it's not escaped
-    text = re.sub(r"(?<!\\)\\t", "\t", text)
+    text = re.sub(r"(?<!\\)\\t", "\t", s)
     # replace \\n with an actual \n, only if it's at EOL and not escaped
     text = re.sub(r"(?<!\\)\\n$", "\n", text)
     if text[-1] in ";:":
@@ -149,111 +146,16 @@ class Eval(callbacks.Plugin):
         #    lambda: irclib.il_botto('PING', '1'), 3600,
         #    'ilbotto_keepalive', now=True)
 
-    def polygen(self, irc, msg, args):
-        """ Polygen. """
-
-        def fillCategories():
-            d = {}
-            soup = BS(urllib.request.urlopen("http://polygen.org/it"))
-            for elem in soup.findAll("div", {"class": "accordion-grammar"}):
-                href = elem.a["href"]
-                cat = href.rsplit("/", 1)[1].rsplit(".", 1)[0]
-                d[cat] = href
-            return d
-
-        try:
-            text = args[0]
-        except IndexError:
-            text = ""
-
-        try:
-            opt, text = text.split(">", 1)
-        except ValueError:
-            opt = ""
-
-        MAX_LINES = 6
-
-        cat = ircutils.stripFormatting(text.lower())
-        valid_cats = fillCategories()
-        sorted_cats = sorted(valid_cats.keys())
-   
-        if cat in ("", "help"):
-            try:
-                s = "* Polygen: available categories\n . %s" % "\n . ".join(sorted_cats)
-                pasteurl = utils.web.pb_inst.paste(s, title="Polygen help")
-            except (utils.web.pastebin.BadAPIRequestError, utils.web.pastebin.YouShallNotPasteError):
-                pasteurl = None
-            except utils.web.pastebin.PostLimitError:
-                pasteurl = None
-            else:
-                irc.reply("available Polygen categories: %s" % pasteurl, prefixNick=True)
-
-            if not pasteurl:
-                irc.reply(format('Valid categories are: %L', sorted_cats))
-        else:
-            if cat == "random":
-                cat = choice(list(valid_cats.keys()))
-                random_cat = True
-            else:
-                random_cat = False
-
-            if cat not in valid_cats:
-                irc.error('Invalid category: %s' % cat)
-                return
-
-            urlh = urllib.request.urlopen('http://polygen.org%s' % valid_cats[cat])
-            soup = BS(urlh).find("div", {"class": "generation"})
-
-            if not soup:
-                irc.error("Cannot retrieve category '%s'." % cat)
-                return
-
-            out = []
-
-            if random_cat:
-                out.append("Polygen('%s')" % cat)
-                MAX_LINES += 1
-
-            for line in soup.renderContents().decode().split("<br/>"):
-                line = utils.web.htmlFormatReplacer(line.strip())
-                if len(line) > 0:
-                    out.append(line)
-
-            outlen = len(out)
-            totchars = sum(len(line) for line in out)
-            if outlen > MAX_LINES or totchars > 800 or opt == 'paste':
-                title = "%s - <%s> &polygen %s" % (time.strftime("%Y/%m/%d %H:%M:%S"), msg.nick, cat)
-                try:
-                    s = ("\n").join(out)
-                    pasteurl = utils.web.pb_inst.paste(
-                        s.encode('utf8'), title=title, expire_in="1H")
-                except (utils.web.pastebin.YouShallNotPasteError, utils.web.pastebin.PostLimitError):
-                    irc.error("Refusing to paste %s here." % (
-                        ("%d lines" % outlen) if outlen > MAX_LINES else ("%d chars" % totchars)))
-                except utils.web.pastebin.BadAPIRequestError as e:
-                    irc.error(str(e))
-                else:
-                    irc.reply("look at %s (%d lines long)" % (pasteurl, outlen), prefixNick=True)
-            else:
-                for line in out:
-                    irc.reply(line)
-            urlh.close()
-
-    #polygen = wrap(polygen, ['text'])
-
     @wrap(['owner', optional('text')])
-    def ppy(self, irc, msg, args, _):
+    def ppy(self, irc, msg, args, text):
         """<python code>
         Evaluates a Python code string using code module. """
-        if not irc.isChannel(msg.args[0]):
-            return
-
         if msg.args[1].startswith(irc.nick):
             return
 
-        channel = msg.args[0]
-        text = _py_parser(msg.args[1])
-        executed, result = self.codexec.execute(text)
+        #text = _py_parser(msg.args[1])
+        text = text or ''
+        executed, result = self.codexec.execute(text + "\n")
         if executed:
             if not result:
                 irc.reply("No output.")
@@ -270,7 +172,8 @@ class Eval(callbacks.Plugin):
         """: instantiates a new InteractiveConsole object. """
         self.codexec.clear()
 
-    def py(self, irc, msg, args):
+    @wrap([optional('text')])
+    def py(self, irc, msg, args, text):
         """<python code>
         Evaluates a Python code string using code module (Restricted version). """
         if not irc.isChannel(msg.args[0]):
@@ -279,8 +182,15 @@ class Eval(callbacks.Plugin):
         if msg.args[1].startswith(irc.nick):
             return
 
+        text = text or ""
+        # FIXME
+        m = re.match(r"^(\s*)", re.sub("^[^\s]+\s", "", msg.args[1]))
+        if m:
+            text = m.group(1) + text
+
         channel = msg.args[0]
-        text = _py_parser(msg.args[1])
+        # FIXME
+        #text = _py_parser(text)
         areq = None
         ares = None
         try:
@@ -314,12 +224,8 @@ class Eval(callbacks.Plugin):
         else:
             if result:
                 if executed:
-                    if len(result) <= 3:
-                        for res in result:
-                            irc.reply(res)
-                    else:
-                        s = "\n".join(result)
-                        irc.reply(s)
+                    s = "\n".join(result)
+                    irc.reply(s)
                 else:
                     s = result[-1]
                     irc.error(s)
@@ -330,35 +236,6 @@ class Eval(callbacks.Plugin):
 
             if ares is not None:
                 ares.wait(0)
-
-    @wrap(['owner', optional('text')])
-    def ppy(self, irc, msg, args, _):
-        """<python code>
-        Evaluates a Python code string using code module. """
-        if not irc.isChannel(msg.args[0]):
-            return
-
-        if msg.args[1].startswith(irc.nick):
-            return
-
-        channel = msg.args[0]
-        text = _py_parser(msg.args[1])
-        executed, result = self.codexec.execute(text)
-        if executed:
-            if not result:
-                irc.reply("No output.")
-            elif len(result) <= 3:
-                for res in result:
-                    irc.reply(res)
-            else:
-                irc.reply(" ".join(result))
-        else:
-            irc.error(result[-1])
-
-    @wrap(['owner'])
-    def pclear(self, irc, msg, args):
-        """: instantiates a new InteractiveConsole object. """
-        self.codexec.clear()
 
     # Yayks, duplicated code!
     @wrap(['text'])

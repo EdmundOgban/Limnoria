@@ -36,6 +36,7 @@ import supybot.ircutils as ircutils
 import supybot.callbacks as callbacks
 import supybot.schedule as schedule
 import supybot.ircmsgs as ircmsgs
+import supybot.ircdb as ircdb
 import supybot.log as logger
 import supybot.plugins.Google.tr_langs as tr_langs
 try:
@@ -201,12 +202,13 @@ class JamuManager(JamuFactory, JamuSupyGetter):
         #self.log.warning("JamuManager.jamu() __suicide:%s" % self.__suicide)
         while not self.__suicide:
             regex = '[{}]{{6,50}}'.format(hira)
-            hiras = "{}.".format(randre.randre(regex))
+            hiras = "{}".format(randre.randre(regex))
 
             if not self._pre_validator(hiras, to_lang=to_lang):
                 continue
 
             prefiltered = self._pre_filter(hiras)
+            #self.log.warning(f"prefiltered: {prefiltered}")
             translated = self._translate_jamu(to_lang, prefiltered)
             text = self._post_filter(translated)
 
@@ -311,8 +313,8 @@ class Random(callbacks.Plugin):
             log.error(e_str)
             raise IOException(e_str)
 
-        self._events = {}
-        self._last_jamu = {}
+        self._events = defaultdict(dict)
+        self._last_jamu = defaultdict(dict)
         self.jamumgr = JamuManager()
         self.updater = UpdaterThread(self.jamumgr)
         self.updater.start()
@@ -417,7 +419,7 @@ class Random(callbacks.Plugin):
         lang = self.registryValue('autoJamuLang', channel)
 
         if activity < threshold:
-            last_jamu = self._last_jamu[channel]
+            last_jamu = self._last_jamu[irc.network][channel]
 
             if monotonic() - last_jamu > period:
                 if lang not in tr_langs.langs:
@@ -431,18 +433,18 @@ class Random(callbacks.Plugin):
                 else:
                     irc.sendMsg(ircmsgs.privmsg(channel, text))
 
-                self._last_jamu[channel] = monotonic()
+                self._last_jamu[irc.network][channel] = monotonic()
 
     def _stats(self, irc, channel):
         on_fmt = "Channel activity: {:.4f}, {} until next jamu"
         off_fmt = "Autojamu is off"
 
-        if self._events[channel] is None:
+        if channel not in self._events[irc.network]:
             s = off_fmt
         else:
             actmon = self._activity_monitor(irc, channel)
             period = self.registryValue('autoJamuPeriod', channel)
-            until = period - (monotonic() - self._last_jamu[channel])
+            until = period - (monotonic() - self._last_jamu[irc.network][channel])
 
             if until < 0:
                 time_fmt = "-%H:%M:%S"
@@ -454,36 +456,41 @@ class Random(callbacks.Plugin):
             s = on_fmt.format(actmon.activity(), clock)
 
         return s
-        
 
-    @wrap(["channeldb", optional("somethingWithoutSpaces")])
-    def autojamu(self, irc, msg, args, channel, state):
+    def _autojamu(self, irc, msg, state):
+        channel = msg.args[0].lower()
+        if not irc.isChannel(channel):
+            return
+
+        if state == "on" and self._events[irc.network].get(channel, None) is None:
+            if channel not in self._last_jamu[irc.network]:
+                self._last_jamu[irc.network][channel] = monotonic()
+
+            autojamu = lambda: self.Proxy(irc.irc, msg, ["autojamu2"])
+            event_name = "autoJamu{}{}".format(irc.network, channel)
+            self._events[irc.network][channel] = schedule.addPeriodicEvent(autojamu, 30, event_name)
+            self.setRegistryValue("autoJamuEnabled", True, channel)
+        elif state == "off":
+            if channel in self._events[irc.network]:
+                if self._events[irc.network][channel] is not None:
+                    schedule.removeEvent(self._events[irc.network][channel])
+                    del self._events[irc.network][channel]
+
+            self.setRegistryValue("autoJamuEnabled", False, channel)
+
+        return self._stats(irc, channel)
+
+    @wrap([optional("somethingWithoutSpaces")])
+    def autojamu(self, irc, msg, args, state):
         """ [on|off]
 
         Manage and retrieve Autojamu state for the current channel"""
-        s = None
-
-        if state == "on" and self._events.get(channel, None) is None:
-            if channel not in self._last_jamu:
-                self._last_jamu[channel] = monotonic()
-            autojamu = lambda: self.Proxy(irc.irc, msg, ["autojamu2"])
-            event_name = "autoJamu{}{}".format(irc.network, channel)
-            self._events[channel] = schedule.addPeriodicEvent(autojamu, 30, event_name)
-            s = self._stats(irc, channel)
-        elif state == "off":
-            if channel in self._events:
-                schedule.removeEvent(self._events[channel])
-                self._events[channel] = None
-        else:
-            if channel not in self._events:
-                self._events[channel] = None
-            s = self._stats(irc, channel)
-
+        s = self._autojamu(irc, msg, state)
         if s:
             irc.reply(s)
 
-    @wrap(["channeldb", optional("somethingWithoutSpaces")])
-    def jamu(self, irc, msg, args, channel, to_lang):
+    @wrap([optional("somethingWithoutSpaces")])
+    def jamu(self, irc, msg, args, to_lang):
         """ [lang] """
 
         if to_lang not in tr_langs.langs:
@@ -517,10 +524,35 @@ class Random(callbacks.Plugin):
 
         irc.reply("%s %d" % (lang, length), prefixNick=True)
 
-    def die(self):
-        for event in self._events.values():
-            if event is not None:
+    def doJoin(self, irc, msg):
+        channel = msg.args[0].lower()
+        if msg.nick != irc.nick:
+            return
+
+        if self.registryValue("autoJamuEnabled", channel) is False:
+            return
+
+        s = self._autojamu(irc, msg, "on")
+        if s:
+            irc.reply(s)
+
+    def doPart(self, irc, msg):
+        channel = msg.args[0].lower()
+        if msg.nick != irc.nick:
+            return
+
+        if self.registryValue("autoJamuEnabled", channel) is False:
+            return
+
+        self._autojamu(irc, msg, "off")
+  
+    def reload(self):
+        for network in self._events.values():
+            for event in network.values():
                 schedule.removeEvent(event)
+ 
+    def die(self):
+        self.reload()
 
         self.updater.die()
         try:

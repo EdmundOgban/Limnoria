@@ -328,6 +328,7 @@ def byteTextWrap(text, size, break_on_hyphens=False):
         words = textwrap.TextWrapper()._split_chunks(text)
     except AttributeError: # Python 2
         words = textwrap.TextWrapper()._split(text)
+
     words.reverse() # use it as a stack
     if sys.version_info[0] >= 3:
         words = [w.encode() for w in words]
@@ -651,14 +652,20 @@ def shorten(s, max_length=50, sep="..."):
     return sep.join([s[:lowerb], s[-upperb:]])
 
 def try_coding(s):
+    def decodefunc(s, coding):
+        if minisix.PY2:
+            return s.decode(coding)
+        else:
+            return str(s, coding)
+
     if isinstance(s, bytes):
         if charadeLoaded:
             s = decode_raw_line(s)
         else:
             try:
-                s = str(s, 'utf8')
+                s = decodefunc(s, 'utf8')
             except UnicodeDecodeError:
-                s = str(s, 'iso-8859-1')
+                s = decodefunc(s, 'iso-8859-1')
 
     return s
 

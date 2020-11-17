@@ -50,8 +50,8 @@ def configure(advanced):
 
 Currency = conf.registerPlugin('Currency')
 # This is where your configuration variables (if any) should go.  For example:
-# conf.registerGlobalValue(Currency, 'someConfigVariableName',
-#     registry.Boolean(False, _("""Help for someConfigVariableName.""")))
+conf.registerGlobalValue(Currency, 'coin',
+    registry.String("Currency", _("""Set Currency.coin as default command.""")))
 
 
 # vim:set shiftwidth=4 tabstop=4 expandtab textwidth=79:

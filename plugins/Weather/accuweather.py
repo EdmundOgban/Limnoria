@@ -45,6 +45,9 @@ def _get_path(path, attrs={}, *, refer_to_self=False):
     if refer_to_self:
         hdrs["Referer"] = url 
 
+    import logging
+    logging.getLogger("supybot").warn(url)
+
     return requests.get(url, headers=hdrs)
 
 
@@ -104,33 +107,23 @@ def _get_forecast(location, forecast_type, *, lang=DEFAULT_LANG, entry_index=0):
 
 
 def forecast(location, *, lang=DEFAULT_LANG, entry_index=0):
-    ret = _get_forecast(location, "weather-forecast",
+    ret = _get_forecast(location, "current-weather",
         lang=lang, entry_index=entry_index)
 
     if ret is None:
         locale_strings = locale["citynotfound"]
-
         return location, locale_strings.get(lang, locale_strings[DEFAULT_LANG])
     else:
         entry, request = ret
 
-    forecasts = []
     soup = BS(request.text, "html.parser")
-
-    for elem in soup.findAll("div", class_="day-panel"):
-        temp_div = elem.find("div", class_="temp")
-        temp = temp_div.find("span", class_="high").text.strip()
-        unit = temp_div.find("span", class_="low").text.strip()
-        condition = elem.find("div", class_="cond").text.strip()
-        when = elem.find("p", class_="module-header").text.strip()
-        datetime = elem.find("p", class_="module-header sub date").text.strip()
-        
-        forecasts.append("{} {}: {} {}, {}".format(
-            when, datetime, temp, unit, condition))
-
+    elem = soup.find("div", class_="current-weather-card")
+    temp = elem.find("div", class_="temp").text.strip().replace("\n\n", ", ")
+    details = ["{}: {}".format(*[o.text for o in detail.findAll("div")])
+        for detail in elem.findAll("div", class_="detail-item")]
+   
     pre = "{location}, {country}".format(**entry)
-    msg = " | ".join(forecasts)
-
+    msg = "{} - {}".format(temp, ", ".join(details))
     return pre, msg
 
 
@@ -145,10 +138,13 @@ def minutecast(location, *, lang=DEFAULT_LANG, entry_index=0):
     else:
         entry, request = ret
 
+    with open("minutecast.html", "wb") as f:
+        f.write(request.text.encode())
+
     pre = "{location}, {country}".format(**entry)
     locale_strings = locale["unavailable"]
     msg = locale_strings.get(lang, locale_strings[DEFAULT_LANG])
-    minutecast_mtch = re.search("window.minuteCastMinutes = ([^;]+)", request.text)
+    minutecast_mtch = re.search("chartData[\"minutecast\"] = ([^;]+)", request.text)
     summary = None
 
     soup = BS(request.text, "html.parser")

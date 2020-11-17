@@ -50,7 +50,7 @@ except ImportError:
 
 from .. import (conf, drivers, log, utils, world)
 from ..utils import minisix
-from ..utils.str import decode_raw_line
+from ..utils.str import decode_raw_line, try_coding
 
 try:
     import ssl
@@ -201,7 +201,9 @@ class SocketDriver(drivers.IrcDriver, drivers.ServersMixin):
             lines = self.inbuffer.split(b'\n')
             self.inbuffer = lines.pop()
             for line in lines:
-                line = decode_raw_line(line)
+                # FIXME: wtf is wrong with charade? è in iso-8859-1 comes out as č
+                #line = decode_raw_line(line)
+                line = try_coding(line)
 
                 msg = drivers.parseMsg(line)
                 if msg is not None and self.irc is not None:

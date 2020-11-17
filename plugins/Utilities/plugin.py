@@ -38,6 +38,7 @@ import supybot.callbacks as callbacks
 from supybot.i18n import PluginInternationalization, internationalizeDocstring
 _ = PluginInternationalization('Utilities')
 
+
 class Utilities(callbacks.Plugin):
     """Provides useful commands for bot scripting / command nesting."""
     # Yes, I really do mean "requires no arguments" below.  "takes no
@@ -89,7 +90,8 @@ class Utilities(callbacks.Plugin):
         $botnick, $channel, $user, $host, $today, $now, and $randomDate are all
         handled appropriately.
         """
-        text = ircutils.standardSubstitute(irc, msg, text)
+        chanenv = ircutils.channel_env(irc, msg.args[0])
+        text = ircutils.standardSubstitute(irc, msg, text, env=chanenv)
         irc.reply(text, prefixNick=False)
     echo = wrap(echo, ['text'])
 

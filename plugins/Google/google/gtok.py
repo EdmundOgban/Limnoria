@@ -1,9 +1,18 @@
-import math
+import re
+import requests
+from time import time, sleep
 
-TKK = [406398, (561666268 + 1526272306)]
+TRANSLATE_URL = "translate.google.it"
+TKK = [0, 0]
+TKK_IAT = 0
+COOKIEJAR = None
+
+#import logging
+#log = logging.getLogger("supybot")
+
 
 def JS_charCodeAt(s, idx):
-    return ord(s[idx])
+    return s[idx]
 
 
 def JS_length(s):
@@ -43,8 +52,7 @@ def RL(a, b):
 
 
 def TL(a):
-    tkk = TKK
-    b = tkk[0];
+    b = TKK[0];
     d = []
     f = 0
     while f < JS_length(a):
@@ -77,7 +85,7 @@ def TL(a):
         a = RL(a, '+-a^+6')
 
     a = RL(a, '+-3^+b+-f')
-    a ^= tkk[1]
+    a ^= TKK[1]
     if a < 0:
         a = (a & 2147483647) + 2147483648
 
@@ -85,6 +93,38 @@ def TL(a):
     return "{}.{}".format(a, a ^ b)
 
 
-def gen_token(text):
-    return TL(text)
+def javascriptify_text(s):
+    encoded = s.encode("utf-16-be")
+    return [encoded[i] * 256 + encoded[i + 1] for i in range(0, len(encoded), 2)]
 
+
+from pathlib import Path
+def reissue_tkk(tries=0):
+    global TKK, TKK_IAT, COOKIEJAR
+
+    hdrs = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:73.0) Gecko/20100101"}
+    urlh = requests.get("https://{}".format(TRANSLATE_URL), headers=hdrs)
+
+    tkk = re.search("tkk:'([^']+)'", urlh.text)
+    if tkk is None:
+        if tries < 10:
+            sleep(0.5)
+            return reissue_tkk(tries+1)
+
+        with open(Path(__file__).parent.joinpath("googletr.html"), "wb") as f:
+            f.write(urlh.text.encode())
+        raise ValueError("Can't grasp tkk from {}.".format(TRANSLATE_URL))
+    else:
+        TKK = [int(x) for x in tkk.group(1).split('.')]
+        TKK_IAT = time()
+        #log.warn("gtok: Reissued tkk: {} {}".format(TKK, TKK_IAT))
+
+    COOKIEJAR = urlh.cookies
+
+
+def gen_token(text, *, reissue=False):
+    if TKK_IAT == 0 or reissue is True or time() - TKK_IAT > 3600:
+        reissue_tkk()
+
+    token = TL(javascriptify_text(text))
+    return token

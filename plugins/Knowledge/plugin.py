@@ -38,17 +38,10 @@ except ImportError:
     # without the i18n module
     _ = lambda x: x
 
-import os.path
-import pickle
-import re
-from datetime import datetime, timedelta
-
+from . import covidit_stats
 from . import unitydoc
 from . import wikipedia
-from collections import namedtuple, deque
-
-Stat = namedtuple("Stat", ["value", "delta"])
-DayStat = namedtuple("DayStat", ["total", "infected", "deaths", "recovered", "date"])
+from . import wikilangs
 
 
 class Knowledge(callbacks.Plugin):
@@ -57,12 +50,6 @@ class Knowledge(callbacks.Plugin):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        
-        if os.path.exists("covidit.pickle"):
-            with open("covidit.pickle", "rb") as f:
-                self.covidit_stats = pickle.load(f)
-        else:
-            self.covidit_stats = deque(maxlen=2)
 
     @wrap(["text"])
     def unityidx(self, irc, msg, args, text):
@@ -102,6 +89,31 @@ class Knowledge(callbacks.Plugin):
         irc.reply(s)
 
     @wrap(["text"])
+    def pydoc(self, irc, msg, args, text):
+        """ <query>
+        search inside the Python 3 documentation using Google."""
+        s = self._gsite(irc, msg, "docs.python.org/3", text)
+        irc.reply(s)
+
+    @wrap([getopts({'pfx': 'text'}), "url", "text"])
+    def gsite(self, irc, msg, args, optlist, url, query):
+        """ [--pfx prefix] <url> <query>
+        search on arbitrary sites using Google."""
+        s = self._gsite(irc, msg, url, query)
+        if optlist:
+            k, v = optlist[0]
+            s = "{}: {}".format(v, s)
+
+        irc.reply(s)
+
+    @wrap(["text"])
+    def rust(self, irc, msg, args, text):
+        """ <query>
+        search inside the Rust documentation using Google."""
+        s = self._gsite(irc, msg, "doc.rust-lang.org", text)
+        irc.reply(s)
+
+    @wrap(["text"])
     def meme(self, irc, msg, args, text):
         """ <query>
         search on knowyourmeme.com using Google."""
@@ -109,21 +121,22 @@ class Knowledge(callbacks.Plugin):
         irc.reply(s)
 
     @wrap(["text"])
-    def wiki(self, irc, msg, args, query):
-        """ <query>
+    def wiki(self, irc, msg, args, query, DEFAULT_LANG="it"):
+        """ [lang]:<query>
             Search on it.wikipedia.org."""
-        lang = "it"
+        try:
+            lang, query = query.split(":", 1)
+        except ValueError:
+            lang = DEFAULT_LANG
+        else:
+            if lang not in wikilangs.LANGS:
+                lang = DEFAULT_LANG
+
         s = "Wikipedia ({}): {} <{}>"
         url, title, res = wikipedia.search(query, lang)
         result = res.split("\n")[0]
         irc.reply(s.format(title, result, url))
 
-    covidit_re = re.compile("Italy: "
-                            r"Total cases: (\d+).+"
-                            r"Infected: (\d+).+"
-                            r"Deaths: (\d+).+"
-                            r"Recovered: (\d+).+"
-                            r"Date: (.+)$")
     def doPrivmsg(self, irc, msg):
         if callbacks.addressed(irc.nick, msg):
             return
@@ -131,34 +144,19 @@ class Knowledge(callbacks.Plugin):
         if msg.nick not in ('Svadilfari', 'Edmund\\'):
             return
 
-        m = self.covidit_re.match(msg.args[1])
-        if m:
-            *cur_vals, date = m.groups()
-            cur_date = datetime.strptime(date, "%Y-%m-%dT%H:%M:%S")
-            cur_stat = [*([int(val), 1] for val in cur_vals), cur_date]
-            if (len(self.covidit_stats) < 2
-                or cur_date - self.covidit_stats[0][-1] >= timedelta(days=2)):
-                self.covidit_stats.append(cur_stat)
-                if len(self.covidit_stats) == 1:
-                    return
-
-            prev_stat = self.covidit_stats[-2]
-            out = []
-            for prev_val, cur_val in zip(prev_stat, cur_stat[:-1]):
-                delta = cur_val[0] - prev_val[0]
-                prev_delta = prev_val[1]
-                percent = (delta - prev_delta) / abs(prev_delta) * 100
-                cur_val[1] = delta
-                out.extend([delta, '+' if percent > 0 else '', percent])
-
-            out_s = ("Italy: New cases: {} ({}{:.1f}%);"
-                     " Infected: {} ({}{:.1f}%); Deaths: {} ({}{:.1f}%);"
-                     " Recovered: {} ({}{:.1f}%)")
-            irc.reply(out_s.format(*out))
+        out = covidit_stats.feed(msg.args[1])
+        if out is False:
+            irc.reply("not going back in time, sorry.", prefixNick=True)
+        elif out:
+            _,_,_, dinfected,_,_, _,_,_, _,_,_, dtested,_,_, *span = out
+            *out, _,_,_, _,_ = out
+            ratio = dinfected / dtested * 100
+            irc.reply(("Italy: New cases: {} ({}{:.1f}%);"
+                " Infected: {} ({}{:.1f}%); Deaths: {} ({}{:.1f}%);"
+                " Recovered: {} ({}{:.1f}%); Infected/Tested: {:.1f}%; Span: {} day{}").format(*out, ratio, *span))
 
     def die(self):
-        with open("covidit.pickle", "wb") as f:
-            pickle.dump(self.covidit_stats, f)
+        covidit_stats.dump()
 
 Class = Knowledge
 

@@ -43,9 +43,10 @@ _ = PluginInternationalization('Games')
 
 class Games(callbacks.Plugin):
     """This plugin provides some small games like (Russian) roulette,
-    eightball, monologue, coin and dice."""
+    eightball, monologue, flip and dice."""
     @internationalizeDocstring
-    def coin(self, irc, msg, args):
+    @wrap
+    def flip(self, irc, msg, args):
         """takes no arguments
 
         Flips a coin and returns the result.
@@ -54,7 +55,6 @@ class Games(callbacks.Plugin):
             irc.reply(_('heads'))
         else:
             irc.reply(_('tails'))
-    coin = wrap(coin)
 
     @internationalizeDocstring
     def dice(self, irc, msg, args, m):

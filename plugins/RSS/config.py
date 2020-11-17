@@ -115,6 +115,14 @@ conf.registerChannelValue(RSS, 'keywordBlacklist',
     in this blacklist.""")))
 
 
+def normalize_feedName(name, lowercase=True):
+    name = name.replace(" ", "")
+    if lowercase is True:
+        name = name.lower()
+
+    return name
+
+
 def register_feed_config(name, url=''):
     RSS.feeds().add(name)
     conf.registerGlobalValue(RSS.feeds, name,

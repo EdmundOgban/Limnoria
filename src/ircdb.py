@@ -1138,6 +1138,17 @@ def checkCapability(hostmask, capability, users=users, channels=channels,
         return _x(capability, conf.supybot.capabilities.default())
 
 
+def checkChannelCapability(irc, msg, cap, *args, **kwargs):
+    """Checks that the user specified by name has the channel capability given. """
+    channel = msg.args[0].lower()
+    if not irc.isChannel(channel):
+        return False
+
+    hostmask = irc.state.nickToHostmask(msg.nick)
+    channelcap = makeChannelCapability(channel, cap)
+    return checkCapability(hostmask, channelcap, *args, **kwargs)
+
+
 def checkCapabilities(hostmask, capabilities, requireAll=False):
     """Checks that a user has capabilities in a list.
 

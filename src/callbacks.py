@@ -41,6 +41,7 @@ import codecs
 import getopt
 import inspect
 import warnings
+import math
 
 from . import (conf, ircdb, irclib, ircmsgs, ircutils, log, registry,
         utils, world)
@@ -897,35 +898,50 @@ class NestedCommandsIrcProxy(ReplyIrcProxy):
         # These use and or or based on whether or not they default to True or
         # False.  Those that default to True use and; those that default to
         # False use or.
+        def sendMsg(m):
+            if not isinstance(m, ircmsgs.IrcMsg):
+                m = _makeReply(self, msg, str(m), **replyArgs)
+
+            m.tags.update({
+                "telegram_sender": msg.tags.get("telegram_sender"),
+                "telegram_inline": msg.tags.get("telegram_inline"),
+                "telegram_inline_query": msg.tags.get("telegram_inline_query")
+            })
+            sendFunc(m)
+            return m
+ 
         assert not isinstance(s, ircmsgs.IrcMsg), \
                'Old code alert: there is no longer a "msg" argument to reply.'
         self.repliedTo = True
-        if sendImmediately:
-            sendMsg = self.irc.sendMsg
-        else:
-            sendMsg = self.irc.queueMsg
-        if msg is None:
-            msg = self.msg
+        msg = msg or self.msg
         if prefixNick is not None:
             self.prefixNick = prefixNick
-        if action is not None:
-            self.action = self.action or action
-            if action:
-                self.prefixNick = False
-        if notice is not None:
-            self.notice = self.notice or notice
-        if private is not None:
-            self.private = self.private or private
+
+        self.action = self.action or action
+        if self.action:
+            self.prefixNick = False
+
+        self.private = self.private or private
+        self.notice = self.notice or notice
+        sendFunc = self.irc.sendMsg if sendImmediately else self.irc.queueMsg
         target = self._getTarget(to)
         # action=True implies noLengthCheck=True and prefixNick=False
-        self.noLengthCheck=noLengthCheck or self.noLengthCheck or self.action
+        self.noLengthCheck = noLengthCheck or self.noLengthCheck or self.action
         if not isinstance(s, minisix.string_types): # avoid trying to str() unicode
             s = str(s) # Allow non-string esses.
 
-        bot_prefixes = conf.get(conf.supybot.abuse.botPrefixes)
-        escape_bot_cmds = conf.get(conf.supybot.abuse.escapeOtherBots)
-        if builtins.any(s.startswith(prefix) for prefix in bot_prefixes.split(" ")):
-            s = "\x02\x02{}".format(s)
+        if not self.finalEvaled:
+            if msg.ignored:
+                # Since the final reply string is constructed via
+                # ' '.join(self.args), the args index for ignored commands
+                # needs to be popped to avoid extra spaces in the final reply.
+                self.args.pop(self.counter)
+                msg.tag('ignored', False)
+            else:
+                self.args[self.counter] = s
+
+            self.evalArgs()
+            return
 
         replyArgs = dict(
             to=self.to,
@@ -935,120 +951,108 @@ class NestedCommandsIrcProxy(ReplyIrcProxy):
             prefixNick=self.prefixNick,
             stripCtcp=stripCtcp
         )
-        if self.finalEvaled:
-            try:
-                if isinstance(self.irc, self.__class__):
-                    s = s[:conf.supybot.reply.maximumLength()]
-                    return self.irc.reply(s,
-                                          noLengthCheck=self.noLengthCheck,
-                                          **replyArgs)
-                elif self.noLengthCheck:
-                    # noLengthCheck only matters to NestedCommandsIrcProxy, so
-                    # it's not used here.  Just in case you were wondering.
-                    m = _makeReply(self, msg, s, **replyArgs)
-                    sendMsg(m)
-                    return m
-                else:
-                    s = ircutils.safeArgument(s)
-                    allowedLength = conf.get(conf.supybot.reply.mores.length,
-                        channel=target, network=self.irc.network)
-                    if not allowedLength: # 0 indicates this.
-                        allowedLength = (512
-                                - len(':') - len(self.irc.prefix)
-                                - len(' PRIVMSG ')
-                                - len(target)
-                                - len(' :')
-                                - len('\r\n')
-                                )
-                        if self.prefixNick:
-                            allowedLength -= len(msg.nick) + len(': ')
-                    maximumMores = conf.get(conf.supybot.reply.mores.maximum,
-                        channel=target, network=self.irc.network)
-                    maximumLength = allowedLength * maximumMores
-                    if len(s) > maximumLength:
-                        log.warning('Truncating to %s bytes from %s bytes.',
-                                    maximumLength, len(s))
-                        s = s[:maximumLength]
-                    s_size = len(s.encode()) if minisix.PY3 else len(s)
-                    if s_size <= allowedLength and "\n" not in s or \
-                       not conf.get(conf.supybot.reply.mores,
-                            channel=target, network=self.irc.network):
-                        # There's no need for action=self.action here because
-                        # action implies noLengthCheck, which has already been
-                        # handled.  Let's stick an assert in here just in case.
-                        assert not self.action
-                        m = _makeReply(self, msg, s, **replyArgs)
-                        sendMsg(m)
-                        return m
-                    # The '(XX more messages)' may have not the same
-                    # length in the current locale
-                    allowedLength -= len(_('(XX more messages)')) + 1 # bold
-                    lines = s.split("\n")
-                    suppressed = max(len(lines) - maximumMores, 0)
-                    suppressed_str = ", {} suppressed".format(suppressed)
-                    if suppressed > 0:
-                        allowedLength -= len(suppressed_str)
+        try:
+            if isinstance(self.irc, self.__class__):
+                s = s[:conf.supybot.reply.maximumLength()]
+                return self.irc.reply(s,
+                    noLengthCheck=self.noLengthCheck,
+                    **replyArgs)
 
-                    lfsep = [t.strip() for t in lines[:maximumMores]]                   
-                    if max(len(t) for t in lfsep) > allowedLength or len(lfsep) == 1:
-                        if "\n" in s:
-                            s = repr(s)
-                        msgs = ircutils.wrap(s, allowedLength)
+            if self.noLengthCheck:
+                # noLengthCheck only matters to NestedCommandsIrcProxy, so
+                # it's not used here.  Just in case you were wondering.
+                return sendMsg(s)
+
+            s = ircutils.safeArgument(s, linefeed=False)
+            allowedLength = conf.get(conf.supybot.reply.mores.length,
+                channel=target, network=self.irc.network)
+            allowedLength = (
+                (allowedLength or int(self.state.supported.get("LINELEN", 512)))
+                - len(':') - len(self.irc.prefix)
+                - len(' PRIVMSG ')
+                - len(target)
+                - len(' :')
+                - len('\r\n'))
+            if self.prefixNick:
+                allowedLength -= len(msg.nick) + len(': ')
+
+            s_size = len(s.encode()) if minisix.PY3 else len(s)
+            doMores = conf.get(conf.supybot.reply.mores,
+                channel=target, network=self.irc.network)
+            if s_size <= allowedLength and "\n" not in s or not doMores:
+                # There's no need for action=self.action here because
+                # action implies noLengthCheck, which has already been
+                # handled.  Let's stick an assert in here just in case.
+                assert not self.action
+                return sendMsg(s)
+
+            mores = []
+            doPaste = False
+            chunks = ircutils.wrap(s, allowedLength)
+            instants = conf.get(conf.supybot.reply.mores.instant,
+                channel=target, network=self.irc.network)
+            maximumMores = conf.get(conf.supybot.reply.mores.maximum,
+                channel=target, network=self.irc.network)
+            sendable = instants + maximumMores
+            if len(chunks) <= sendable:
+                msgs = chunks[:instants]
+                rest = chunks[instants:sendable]
+                if rest:
+                    msglen = len(msgs.pop())
+                    # The constant '5' represents (, ), two spaces and bold.
+                    allowedLength -= len(_('more messages')) + len(str(maximumMores)) + 5
+                    chunks = ircutils.wrap(s[msglen:], allowedLength)
+                    if len(chunks) <= maximumMores + 1:
+                        chunks.reverse()
+                        mores.append(
+                            _makeReply(self, msg, chunks[0], **replyArgs))
+                        for i, ss in enumerate(chunks[1:], 1):
+                            if i != 1:
+                                moremsg = _('more messages')
+                            else:
+                                moremsg = _('more message')
+
+                            ss = "{} \x02({} {})".format(ss, i, moremsg)
+                            mores.append(_makeReply(self, msg, ss, **replyArgs))
+
+                        msgs.append(mores.pop())
                     else:
-                        msgs = lfsep
-
-                    msgs.reverse()
-                    instant = conf.get(conf.supybot.reply.mores.instant,
-                        channel=target, network=self.irc.network)
-                    while instant > 1 and msgs:
-                        instant -= 1
-                        response = msgs.pop()
-                        sendMsg(response)
-                        # XXX We should somehow allow these to be returned, but
-                        #     until someone complains, we'll be fine :)  We
-                        #     can't return from here, though, for obvious
-                        #     reasons.
-                        # return m
-                    if not msgs:
-                        return
-                    response = msgs.pop()
-                    if msgs:
-                        if len(msgs) == 1:
-                            more = _('more message')
-                        else:
-                            more = _('more messages')
-                        if suppressed > 0:
-                            more += suppressed_str
-
-                        n = ircutils.bold('(%i %s)' % (len(msgs), more))
-                        response = '%s %s' % (response, n)
-
-                    prefix = msg.prefix
-                    if self.to and ircutils.isNick(self.to):
-                        try:
-                            state = self.getRealIrc().state
-                            prefix = state.nickToHostmask(self.to)
-                        except KeyError:
-                            pass # We'll leave it as it is.
-                    mask = prefix.split('!', 1)[1]
-                    self._mores[mask] = msgs
-                    public = bool(self.msg.channel)
-                    private = self.private or not public
-                    self._mores[msg.nick] = (private, msgs)
-                    sendMsg(response)
-                    return response
-            finally:
-                self._resetReplyAttributes()
-        else:
-            if msg.ignored:
-                # Since the final reply string is constructed via
-                # ' '.join(self.args), the args index for ignored commands
-                # needs to be popped to avoid extra spaces in the final reply.
-                self.args.pop(self.counter)
-                msg.tag('ignored', False)
+                        doPaste = True
             else:
-                self.args[self.counter] = s
-            self.evalArgs()
+                doPaste = True
+
+            if doPaste:
+                title = _("{} - Pasted for {}").format(
+                    time.strftime("%Y/%m/%d %H:%M:%S"), msg.nick)
+                pasteurl = utils.web.pb_inst.paste(
+                    s.encode('utf8'), title=title)
+                msgs = ["{}: ".format(msg.nick)
+                    + _("look at {} ({} lines long)").format(
+                        pasteurl, s.count("\n")+1)]
+
+            for ss in msgs:
+                # XXX We should somehow allow these to be returned, but
+                #     until someone complains, we'll be fine :)  We
+                #     can't return from here, though, for obvious
+                #     reasons.
+                sendMsg(ss)
+
+            if mores:
+                prefix = msg.prefix
+                if self.to and ircutils.isNick(self.to):
+                    try:
+                        state = self.getRealIrc().state
+                        prefix = state.nickToHostmask(self.to)
+                    except KeyError:
+                        pass # We'll leave it as it is.
+
+                mask = prefix.split('!', 1)[1]
+                self._mores[mask] = mores
+                public = bool(self.msg.channel)
+                private = self.private or not public
+                self._mores[msg.nick] = (private, mores)
+        finally:
+            self._resetReplyAttributes()
 
     def noReply(self, msg=None):
         if msg is None:

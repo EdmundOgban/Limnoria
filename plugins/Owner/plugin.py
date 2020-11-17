@@ -160,7 +160,8 @@ class Owner(callbacks.Plugin):
                    'No servers are set for the %s network.' % network
         self.log.debug('Creating new Irc for %s.', network)
         newIrc = irclib.Irc(network)
-        driver = drivers.newDriver(newIrc)
+        networkDriver = conf.supybot.drivers.module.getSpecific(network)()
+        driver = drivers.newDriver(newIrc, moduleName=networkDriver)
         self._loadPlugins(newIrc)
         return newIrc
 

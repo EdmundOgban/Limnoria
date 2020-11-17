@@ -35,6 +35,7 @@ import types
 import codecs
 import base64
 import binascii
+import string
 
 from supybot import utils, plugins, commands, ircutils, callbacks
 from supybot.i18n import PluginInternationalization, internationalizeDocstring
@@ -46,6 +47,10 @@ _ = PluginInternationalization('String')
 from . import passwdgen
 
 import multiprocessing
+
+CARBON_ALPHABETH = "OPGTIVCHEJKRNMABQLZDUFWXYS"
+CARBON_TRTABLE = str.maketrans(string.ascii_letters,
+    CARBON_ALPHABETH.lower() + CARBON_ALPHABETH)
 
 class String(callbacks.Plugin):
     """Provides useful commands for manipulating characters and strings."""
@@ -270,6 +275,11 @@ class String(callbacks.Plugin):
         for i in range(cnt):
             res.append(passwdgen.passgen(length))
         irc.reply(" ".join(res))
+
+    @wrap(['text'])
+    def carbon(self, irc, msg, args, text):
+        """ <text> """
+        irc.reply(text.translate(CARBON_TRTABLE))
 
 Class = String
 

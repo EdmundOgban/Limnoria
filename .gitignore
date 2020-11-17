@@ -31,8 +31,10 @@ data/
 logs/
 *.conf
 *.conf.bak
+*credentials*
+*.pickle
+*.json
 
 # Intellij PyCharm / IDEA related files
 *.iml
 .idea
-*credentials*

@@ -28,7 +28,6 @@ class PasteBin(object):
         return PasteBin.__instance
 
     def paste(self, text, title="", visibility=VIS_UNLISTED, expire_in="10M", format="text"):
-
         if time.time()-self._lastpaste < 30:
             raise YouShallNotPasteError
         if expire_in not in self._expire_codes:

@@ -8,6 +8,7 @@ from string import ascii_letters as ASCII_L
 
 VOWELS = "AEIOU"
 
+
 class ScramblerExhaustedError(Exception):
     pass
 class UndefinedVariableError(Exception):
@@ -16,6 +17,51 @@ class InvalidVariableTypeError(Exception):
     pass
 class BuiltinOverrideError(Exception):
     pass
+
+
+def letter_range(s):
+    m = re.match(r"^(\s+)?([a-zA-Z])\.\.([a-zA-Z])(\s+)?$", s)
+
+    if not m:
+        return s
+
+    leading = m.group(1) or ""
+    trailing = m.group(4) or ""
+    pos_a, pos_b = ASCII_L.index(m.group(2)), ASCII_L.index(m.group(3))
+
+    if pos_a < pos_b:
+        letter = ASCII_L[random.randint(pos_a, pos_b)]
+    elif pos_a > pos_b:
+        letter = ASCII_L[random.randint(pos_a, pos_b+len(ASCII_L)) % len(ASCII_L)]
+    else:
+        letter = m.group(1)
+
+    return leading + letter + trailing
+
+
+def numeric_range(s):
+    m = re.match(r"^(\s+)?(-?\d+)\.\.(-?\d+)(\s+)?$", s)
+
+    if not m:
+        return s
+
+    leading = m.group(1) or ""
+    trailing = m.group(4) or ""
+    
+    mg1, mg2 = int(m.group(2)), int(m.group(3))
+    
+    if mg1 <= mg2:
+        a, b = mg1, mg2
+    else:
+        a, b = mg2, mg1
+
+    fmt = "%%s%%0%sd%%s" % (len(m.group(2)))
+    return fmt % (leading, random.randint(a, b), trailing)
+ 
+ 
+def bare_choice(s):
+    return random.choice(s.split(";" if ";" in s else " "))
+
 
 class VariablesManager(object):
     def __init__(self):
@@ -86,49 +132,6 @@ class VariablesManager(object):
     def __iter__(self):
         for k in self._vars:
             yield k
-
-
-def letter_range(s):
-    m = re.match(r"^(\s+)?([a-zA-Z])\.\.([a-zA-Z])(\s+)?$", s)
-
-    if not m:
-        return s
-
-    leading = m.group(1) or ""
-    trailing = m.group(4) or ""
-    pos_a, pos_b = ASCII_L.index(m.group(2)), ASCII_L.index(m.group(3))
-
-    if pos_a < pos_b:
-        letter = ASCII_L[random.randint(pos_a, pos_b)]
-    elif pos_a > pos_b:
-        letter = ASCII_L[random.randint(pos_a, pos_b+len(ASCII_L)) % len(ASCII_L)]
-    else:
-        letter = m.group(1)
-
-    return leading + letter + trailing
-
-def numeric_range(s):
-    m = re.match(r"^(\s+)?(-?\d+)\.\.(-?\d+)(\s+)?$", s)
-
-    if not m:
-        return s
-
-    leading = m.group(1) or ""
-    trailing = m.group(4) or ""
-    
-    mg1, mg2 = int(m.group(2)), int(m.group(3))
-    
-    if mg1 <= mg2:
-        a, b = mg1, mg2
-    else:
-        a, b = mg2, mg1
-
-    fmt = "%%s%%0%sd%%s" % (len(m.group(2)))
-    return fmt % (leading, random.randint(a, b), trailing)
- 
-def bare_choice(s):
-    return random.choice(s.split(";" if ";" in s else " "))
-
 
 
 def rand(s, *, zero_depth=True):

@@ -48,6 +48,7 @@ __contributors__ = {}
 from . import config
 from . import plugin
 from . import tr_langs
+from . import ytsearch
 from .google import gtok, translate
 from importlib import reload
 reload(plugin) # In case we're being reloaded.
@@ -56,6 +57,7 @@ reload(plugin) # In case we're being reloaded.
 reload(tr_langs)
 reload(gtok)
 reload(translate)
+reload(ytsearch)
 
 if world.testing:
     from . import test

@@ -884,9 +884,9 @@ registerGlobalValue(supybot.drivers, 'poll',
 
 class ValidDriverModule(registry.OnlySomeStrings):
     __slots__ = ()
-    validStrings = ('default', 'Socket', 'Twisted')
+    validStrings = ('default', 'Socket', 'Twisted', 'Telegram')
 
-registerGlobalValue(supybot.drivers, 'module',
+registerNetworkValue(supybot.drivers, 'module',
     ValidDriverModule('default', _("""Determines what driver module the 
     bot will use. The default is Socket which is simple and stable 
     and supports SSL. Twisted doesn't work if the IRC server which 

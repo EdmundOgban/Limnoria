@@ -58,6 +58,8 @@ conf.registerChannelValue(Random, 'autoJamuPeriod',
     registry.PositiveInteger(1800, _("""Period between two autojamus""")))
 conf.registerChannelValue(Random, 'autoJamuLang',
     registry.String("it", _("""Default language for autojamus""")))
+conf.registerChannelValue(Random, 'autoJamuEnabled',
+    registry.Boolean(False, _("""Send periodic jamus to channel""")))
 
 
 # vim:set shiftwidth=4 tabstop=4 expandtab textwidth=79:

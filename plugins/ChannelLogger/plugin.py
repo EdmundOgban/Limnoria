@@ -167,14 +167,13 @@ class ChannelLogger(callbacks.Plugin):
             self.timestamp(log)
         if self.registryValue('stripFormatting', channel, irc.network):
             s = ircutils.stripFormatting(s)
-        if minisix.PY2:
-            s = s.decode('utf8', 'ignore')
         log.write(s)
         if self.registryValue('flushImmediately'):
             log.flush()
 
     def doPrivmsg(self, irc, msg):
         (recipients, text) = msg.args
+
         for channel in recipients.split(','):
             if irc.isChannel(channel):
                 noLogPrefix = self.registryValue('noLogPrefix',
