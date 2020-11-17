@@ -38,8 +38,8 @@ class ShrinkUrlTestCase(ChannelPluginTestCase):
     sfUrl ='http://sourceforge.net/p/supybot/bugs/?source=navbar'
     udUrl = 'http://www.urbandictionary.com/define.php?' \
             'term=all+your+base+are+belong+to+us'
-    tests = {'tiny': [(sfUrl, r'http://tinyurl.com/b7wyvfz'),
-                      (udUrl, r'http://tinyurl.com/u479')],
+    tests = {'tiny': [(sfUrl, r'https://tinyurl.com/b7wyvfz'),
+                      (udUrl, r'https://tinyurl.com/u479')],
              # ur1.ca is no longer active
              #'ur1': [(sfUrl, r'http://ur1.ca/ceqh8'),
              #        (udUrl, r'http://ur1.ca/9xl9k')],
@@ -109,7 +109,7 @@ class ShrinkUrlTestCase(ChannelPluginTestCase):
             try:
                 self.assertSnarfNoResponse('http://sf.net/', 5)
                 self.assertSnarfRegexp('http://sourceforge.net/',
-                                       r'http://tinyurl.com/7vm7.*\(at ')
+                                       r'https://tinyurl.com/7vm7.*\(at ')
             finally:
                 shrink.default.setValue(origService)
                 shrink.shrinkSnarfer.setValue(origSnarf)
