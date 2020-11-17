@@ -116,7 +116,7 @@ class Schedule(drivers.IrcDriver):
         def wrapper():
             nonlocal count
             try:
-                f(*args, **kwargs)
+                self._execute(f, name, args, kwargs, threaded)
             finally:
                 # Even if it raises an exception, let's schedule it.
                 if count is not None:

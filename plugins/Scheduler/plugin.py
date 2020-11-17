@@ -203,7 +203,7 @@ class Scheduler(callbacks.Plugin):
             return
 
         t = time.time() + seconds
-        id = self._add(irc.network, msg, t, command)
+        id = self._add(irc.network, msg, t, command, msg.nick)
         irc.replySuccess(format(_('Event #%i added.'), id))
     add = wrap(add, ['positiveInt', 'text'])
 
@@ -216,7 +216,7 @@ class Scheduler(callbacks.Plugin):
         will return '<nick> Reminder: Hello World' 30 minutes after being set.
         """
         t = time.time() + seconds
-        id = self._add(irc.network, msg, t, text, is_reminder=True)
+        id = self._add(irc.network, msg, t, text, msg.nick, is_reminder=True)
         irc.replySuccess(format(_('Reminder Event #%i added.'), id))
     remind = wrap(remind, ['positiveInt', 'text'])
 
@@ -246,7 +246,7 @@ class Scheduler(callbacks.Plugin):
             irc.error(_('Invalid event id.'))
     remove = wrap(remove, ['lowered'])
 
-    def _repeat(self, network, msg, name, seconds, command, issued_by,
+    def _repeat(self, network, msg, name, seconds, issued_by, command,
         first_run, next_run_in):
         f = self._makeCommandFunction(network, msg, command, remove=False)
         f_wrapper = schedule.schedule.makePeriodicWrapper(f, seconds, name)
@@ -286,7 +286,8 @@ class Scheduler(callbacks.Plugin):
         next_run_in = opts.get('delay', 0)
         first_run = time.time() + next_run_in
         self._repeat(
-            irc.network, msg, name, seconds, command, first_run, next_run_in)
+            irc.network, msg, name, seconds, msg.nick, command,
+            first_run, next_run_in)
         # We don't reply because the command runs immediately.
         # But should we?  What if the command doesn't have visible output?
         # irc.replySuccess()
@@ -294,22 +295,23 @@ class Scheduler(callbacks.Plugin):
         getopts({'delay': 'positiveInt'}),
         'nonInt', 'positiveInt', 'text'])
 
-    def _format_list(self, L):
-        L.sort()
-        for (i, (name, command)) in enumerate(L):
-            time_at = datetime.fromtimestamp(command["time"]-time.time()-3600).strftime("%H:%M:%S")
-            L[i] = format('%s: %q -%s', name, command['command'], time_at)
-
-        return L
+    # Old code, here for reference.
+    #def _format_list(self, L):
+    #    L.sort()
+    #    for (i, (name, time, next_in, command)) in enumerate(L):
+    #        time_at = datetime.fromtimestamp(command["time"]-time.time()-3600).strftime("%H:%M:%S")
+    #        L[i] = format('%s: %q -%s', name, command['command'], time_at)
+    #
+    #    return L
 
     def _list_events(self, events):
         events.sort()
         replies = []
         now = time.time()
         for (i, (name, event)) in enumerate(events):
-            if event['type'] == 'single':
-                replies.append(format('%s (in %T): %q', name,
-                    event['time'] - now, event['command']))
+            if event['type'] in ('single', 'alert'):
+                replies.append(format('%s (in %T): %q',
+                    name, event['time'] - now, event['command']))
             else:
                 next_run_in = self._getNextRunIn(
                     event['first_run'], now, event['time'])
@@ -328,8 +330,7 @@ class Scheduler(callbacks.Plugin):
 
         events = list(self.events.items())
         if events:
-            L = self._list_events(events)
-            irc.reply(format('%L', self._format_list(L)))
+            irc.reply(format('%L', self._list_events(events)))
         else:
             irc.reply(_('There are currently no scheduled commands.'))
 
@@ -342,8 +343,7 @@ class Scheduler(callbacks.Plugin):
 
         events = list((k, v) for k, v in self.events.items() if v['issued_by'] == msg.nick)
         if events:
-            L = self._list_events(events)
-            irc.reply(format('%L', self._format_list(L)))
+            irc.reply(format('%L', self._list_events(events)))
         else:
             irc.reply(_('There are currently no scheduled commands.'))
 
@@ -396,7 +396,8 @@ class Scheduler(callbacks.Plugin):
 
         t = time.time() + timeuntil
         s = text if text else "your {} timer has expired.".format(units)
-        id = self._add(irc, msg, t, "echo {}: {}".format(msg.nick, s), msg.nick, type="alert")
+        id = self._add(irc.network, msg, t,
+            "echo {}: {}".format(msg.nick, s), msg.nick, type="alert")
 
     def _wipe_alerts(self):
         cnt = 0
