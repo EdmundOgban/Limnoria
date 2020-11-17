@@ -436,7 +436,7 @@ class User(callbacks.Plugin):
 
     @internationalizeDocstring
     @wrap(['private', optional('otherUser'), additional('something')])
-    def id(self, irc, msg, args, user, password):
+    def identify(self, irc, msg, args, user, password):
         """<name> <password>
 
         Identifies the user as <name>. This command (and all other
