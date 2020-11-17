@@ -116,7 +116,7 @@ class PisgStats(callbacks.Plugin):
                           'Removing and rescheduling.' % self.event_name)
             schedule.removeEvent(self.event_name)
             schedule.addPeriodicEvent(self.generator, STATS_DELAY,
-                                      self.event_name)
+                                      self.event_name, threaded=True)
 
     @wrap(['owner'])
     def genstats(self, irc, msg, args):
