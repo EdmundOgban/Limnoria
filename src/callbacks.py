@@ -1023,12 +1023,15 @@ class NestedCommandsIrcProxy(ReplyIrcProxy):
                 msgs = chunks[:instants]
                 rest = chunks[instants:sendable]
                 if rest:
-                    msglen = len(msgs.pop())
+                    msgs.pop()
+                    msglen = sum(len(msg) for msg in msgs)
                     # The constant '5' represents (, ), two spaces and bold.
                     allowedLength -= len(_('more messages')) + len(str(maximumMores)) + 5
-                    chunks = ircutils.wrap(s[msglen:], allowedLength)
+                    chunks = ircutils.wrap(s[msglen:].lstrip("\n"), allowedLength)
                     if len(chunks) <= maximumMores + 1:
                         chunks.reverse()
+                        # Last message (which is the first here because
+                        #  of .reverse()) must not have suffixes
                         mores.append(
                             _makeReply(self, msg, chunks[0], **replyArgs))
                         for i, ss in enumerate(chunks[1:], 1):
