@@ -407,12 +407,17 @@ class Google(callbacks.PluginRegexp):
 
     def doPrivmsg(self, irc, msg):
         text = ' '.join(msg.args[1:])
-        #logtext = text.replace("%", "")
         if not irc.isChannel(msg.args[0]):
             return
 
         if callbacks.addressed(irc, msg):
             return
+
+        if ircmsgs.isCtcp(msg) and not ircmsgs.isAction(msg):
+            return
+
+        if ircmsgs.isAction(msg):
+            text = "{} {}".format(msg.nick, ircmsgs.unAction(msg))
 
         channel = plugins.getChannel(msg.args[0])
         channel = channel.lower()
