@@ -121,6 +121,20 @@ class Knowledge(callbacks.Plugin):
         irc.reply(s)
 
     @wrap(["text"])
+    def pypi(self, irc, msg, args, text):
+        """ <query>
+        search on The Python Package Index using Google."""
+        s = self._gsite(irc, msg, "pypi.org", text)
+        irc.reply(s)
+
+    @wrap(["text"])
+    def rtd(self, irc, msg, args, text):
+        """ <query>
+        search on readthedocs.org using Google."""
+        s = self._gsite(irc, msg, "readthedocs.org", text)
+        irc.reply(s)
+
+    @wrap(["text"])
     def wiki(self, irc, msg, args, query, DEFAULT_LANG="it"):
         """ [lang]:<query>
             Search on it.wikipedia.org."""
