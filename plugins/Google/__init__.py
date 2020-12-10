@@ -47,16 +47,16 @@ __contributors__ = {}
 
 from . import config
 from . import plugin
-from . import tr_langs
 from . import ytsearch
-from .google import gtok, translate
+from .translators.google import translate, langs
+from .translators.deepl import translate as deeptr
 from importlib import reload
 reload(plugin) # In case we're being reloaded.
 # Add more reloads here if you add third-party modules and want them to be
 # reloaded when this plugin is reloaded.  Don't forget to import them as well!
-reload(tr_langs)
-reload(gtok)
+reload(langs)
 reload(translate)
+reload(deeptr)
 reload(ytsearch)
 
 if world.testing:
