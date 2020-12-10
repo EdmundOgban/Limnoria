@@ -42,7 +42,7 @@ from telegram.ext import CommandHandler, MessageHandler, InlineQueryHandler
 from telegram.ext import Updater, Filters
 
 from . import credentials
-from .. import drivers, ircmsgs, ircutils
+from .. import conf, drivers, ircmsgs, ircutils
 
 import logging
 log = logging.getLogger("supybot")
@@ -313,7 +313,7 @@ class TelegramDriver(drivers.IrcDriver, drivers.ServersMixin):
     def run(self):
         self._sendIfMsgs()
         try:
-            msg = self.inqueue.get_nowait()
+            msg = self.inqueue.get(timeout=conf.supybot.drivers.poll())
         except queue.Empty:
             pass
         else:
