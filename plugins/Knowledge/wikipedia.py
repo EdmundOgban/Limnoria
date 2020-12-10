@@ -128,6 +128,17 @@ def _unwanted_node(node):
 
     return False
 
+
+def _get_fullstop(s):
+    chars = ".\u3002"
+    for c in chars:
+        if c in s:
+            return c
+
+    # default to "."
+    return "."
+
+
 def _parse_nodes(wikidoc, lang, *, periods):
     out = []
     partials = []
@@ -176,8 +187,10 @@ def _parse_nodes(wikidoc, lang, *, periods):
             # Check that text is not in a markup element
             if isinstance(node, mw_nodes.text.Text):
                 # Check if we've encountered the last sentence
+
+                fullstop = _get_fullstop(strnode_nomarkup)
                 try:
-                    a, b = strnode_nomarkup.split(".", 1)
+                    a, b = strnode_nomarkup.split(fullstop, 1)
                 except ValueError:
                     partials.append(strnode_nomarkup)
                 else:
@@ -193,7 +206,7 @@ def _parse_nodes(wikidoc, lang, *, periods):
                             partials.append(strnode_nomarkup)
                             continue
 
-                    partials.extend([a, ".\n"])
+                    partials.extend([a, fullstop + "\n"])
                     out.append("".join(partials))
                     partials = [b]
             else:
@@ -205,7 +218,7 @@ def _parse_nodes(wikidoc, lang, *, periods):
 
 
 def _build_return(lang, title, text):
-    url = WIKI_URL.format(lang, urlparse.quote(title).replace("%20", "_"))
+    url = WIKI_URL.format(lang, title.replace(" ", "_"))
     return url, title, text
 
 
