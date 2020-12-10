@@ -32,6 +32,8 @@ def build_query(from_lang, to_lang, *, q, reissue=False):
 
 
 def tr(from_lang, to_lang, *, q, reissue=False):
+    return "", "", ["Out of order. Sorry :("]
+
     url = build_query(from_lang, to_lang, q=q, reissue=reissue)
     hdrs = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:73.0) Gecko/20100101"}
     data = requests.get(url, headers=hdrs, cookies=gtok.COOKIEJAR)
