@@ -78,10 +78,13 @@ class Internet(callbacks.Plugin):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        URL_SAFECHARS = r"A-Za-z0-9_~.\-;/?:@=&%()#"
+        #URL_SAFECHARS = r"A-Za-z0-9_~.\-;/?:@=&%()#"
+        HOST_SAFECHARS = r"\w~.\-;/?:@=&%()#"
         TLD_SAFECHARS = r"A-Za-z0-9{2,}"
-        self._urlsnarf_re = re.compile("(https?://[{0}]+\.[{1}]{{2,}}[{0}]*)".format(
-            URL_SAFECHARS, TLD_SAFECHARS))
+        PATH_SAFECHARS = r"\S"
+
+        self._urlsnarf_re = re.compile("(https?://[{}]+\.[{}]{{2,}})([{}]*)".format(
+            HOST_SAFECHARS, TLD_SAFECHARS, PATH_SAFECHARS))
         self._supported_content = ["text/html"]
         self._last_url = dict()
         self._last_tweet_url = dict()
@@ -295,7 +298,8 @@ class Internet(callbacks.Plugin):
                 s = prefix + address
                 res = self._urlsnarf_re.match(ircutils.stripFormatting(s))
                 if res:
-                    address = res.group(1)
+                    address, query = map(utils.str.try_coding, res.groups())
+                    address = "".join([address, urlparse.quote(query)])
                     break
             else:
                 raise urllib.error.URLError(reason="invalid url: '%s'" % address)
@@ -347,24 +351,25 @@ class Internet(callbacks.Plugin):
         except IndexError:
             charset = "ascii"
 
-        #soup = BS(urlh, parse_only=SoupStrainer('title', limit=1))
-        #if soup.text:
-        #    title_text = html.unescape(soup.text)
-        #    return "Title (%s): %s" % (utils.str.shorten(url), title_text)
+        title = None
+        ogtitle = None
         match_text = ""
         for webpage in self._read_chunked(urlh):
-            title = re.search(b"<title[^>]*>(.+?(?=</title>))", webpage, re.DOTALL | re.I)
-            meta = re.search(b"<meta property=['\"]og:title['\"] content=['\"]([^'\"]+)['\"]", webpage, re.DOTALL | re.I)
+            if not title:
+                title = re.search(b"<title[^>]*>(.+?(?=</title>))", webpage, re.DOTALL | re.I)
+            if not ogtitle:
+                ogtitle = re.search(b"<meta property=['\"]og:title['\"] content=['\"]([^'\"]+)['\"]", webpage, re.DOTALL | re.I)
+
             if youtube:
-                if meta:
-                    match_text = meta.group(1)
-            elif title or meta:
-                if title and meta:
+                if ogtitle:
+                    match_text = ogtitle.group(1)
+            elif title or ogtitle:
+                if title and ogtitle:
                     match_text = title.group(1)
-                elif meta:
-                    match_text = meta.group(1)
+                elif ogtitle:
+                    match_text = ogtitle.group(1)
                 else:
-                    match_text = (meta or title).group(1)
+                    match_text = (ogtitle or title).group(1)
 
             if match_text:
                 title_text = html.unescape(match_text.strip().decode(charset))
@@ -531,8 +536,16 @@ class Internet(callbacks.Plugin):
         channel = channel.lower()
         res = self._urlsnarf_re.search(ircutils.stripFormatting(text))
         if res:
-            url = utils.str.try_coding(res.group(1))
+            url, query = map(utils.str.try_coding, res.groups())
+            url = "".join([url, query])
+            scheme, netloc, path, query, fragment = list(urlparse.urlsplit(url))
+            path = urlparse.quote(path)
+            qsl_quoted = [(urlparse.quote(a), urlparse.quote(b))
+                for a, b in urlparse.parse_qsl(query)]
+            query = urlparse.urlencode(qsl_quoted)
+            url = urlparse.urlunsplit([scheme, netloc, path, query, fragment])
             splitresult = urlparse.urlsplit(url)
+
             if splitresult.netloc.endswith("twitter.com"):
                 self._last_tweet_url[channel] = url
             else:
