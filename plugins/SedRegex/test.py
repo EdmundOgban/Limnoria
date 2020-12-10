@@ -51,13 +51,22 @@ class SedRegexTestCase(ChannelPluginTestCase):
         m = self.getMsg(' ')
         self.assertIn('Abcd testefgh', str(m))
 
+    def testNoMatch(self):
+        self.feedMsg('hello world')
+        self.feedMsg('s/goodbye//')
+        m = self.getMsg(' ')
+        self.assertIn('Search not found', str(m))
+        self.feedMsg('s/Hello/hi/')  # wrong case
+        m = self.getMsg(' ')
+        self.assertIn('Search not found', str(m))
+
     def testCaseInsensitiveReplace(self):
         self.feedMsg('Aliens Are Invading, Help!')
         self.feedMsg('s/a/e/i')
         m = self.getMsg(' ')
         self.assertIn('eliens', str(m))
 
-    def testIgnoreRegexpWithBadCase(self):
+    def testIgnoreRegexWithBadCase(self):
         self.feedMsg('aliens are invading, help!')
         self.assertSnarfNoResponse('S/aliens/monsters/')
 
@@ -100,9 +109,15 @@ class SedRegexTestCase(ChannelPluginTestCase):
         self.feedMsg('ouch', frm=self.__class__.other2)
         self.feedMsg('poof', frm=self.__class__.other)
         self.feedMsg('wow!')
+
+        # This should work regardless of whether we use "nick," or "nick:" as prefix
         self.feedMsg('%s: s/^/p/' % ircutils.nickFromHostmask(self.__class__.other2))
         m = self.getMsg(' ')
         self.assertIn('pouch', str(m))
+
+        self.feedMsg('%s, s/^/c/' % ircutils.nickFromHostmask(self.__class__.other2))
+        m = self.getMsg(' ')
+        self.assertIn('couch', str(m))
 
     @unittest.skipUnless(sys.version_info[0] >= 3, 'Test fails on Python 2.')
     def testBoldReplacement(self):
@@ -215,6 +230,53 @@ class SedRegexTestCase(ChannelPluginTestCase):
         self.feedMsg('s/LTAER/later, bye/i <extra text>')
         m = self.getMsg(' ')
         self.assertIn('see you later, bye', str(m))
+
+    def testIgnoreRegexOnMessagesBeforeEnable(self):
+        # Before 2020-10-12 SedRegex used a single msg.tag() to track and ignore messages parsed as a regexp.
+        # However, a common complaint is that this doesn't catch regexps sent before SedRegex was loaded/enabled...
+        with conf.supybot.plugins.sedregex.enable.context(False):
+            self.feedMsg('foo')
+            self.feedMsg('barbell')
+            self.feedMsg('s/foo/bar/')
+            self.feedMsg('abcdef')
+        self.feedMsg('s/bar/door/')
+        m = self.getMsg(' ')
+        # The INCORRECT response would be "s/foo/door/"
+        self.assertIn('doorbell', str(m))
+
+    def testSeparatorPresentInNick(self):
+        # Check that replacement doesn't break if the target's nick contains the sed separator.
+        frm = 'hello|world!~hello@clk-12345678.example.com'
+        with conf.supybot.protocols.irc.strictRfc.context(False):
+            self.feedMsg('the quick brown fox jumps over the lazy hog', frm=frm)
+            # self replace
+            self.feedMsg('s|hog|dog', frm=frm)
+            m = self.getMsg(' ')
+            self.assertIn('the lazy dog', str(m))
+            # other replace
+            self.feedMsg('%s: s| hog| dog' % ircutils.nickFromHostmask(frm), frm=self.__class__.other2)
+            m = self.getMsg(' ')
+            self.assertIn('the lazy dog', str(m))
+
+    def testSlashInNicks(self):
+        # Slash in nicks should be accepted when strictRfc is off
+        frm = 'nick/othernet!hello@othernet.internal'
+        with conf.supybot.protocols.irc.strictRfc.context(False):
+            self.feedMsg('hello world', frm=frm)
+            self.feedMsg('abc 123', frm=frm)
+            # self replace
+            self.feedMsg('s/world/everyone/', frm=frm)
+            m = self.getMsg(' ')
+            self.assertIn('hello everyone', str(m))
+            # other replace
+            self.feedMsg('%s: s/123/321/' % ircutils.nickFromHostmask(frm), frm=self.__class__.other2)
+            m = self.getMsg(' ')
+            self.assertIn('abc 321', str(m))
+
+        # When strictRfc is on, nicks for explicit reference are checked but not
+        # the sender's own nick
+        with conf.supybot.protocols.irc.strictRfc.context(True):
+            self.assertSnarfNoResponse('%s: s/123/321/' % ircutils.nickFromHostmask(frm), frm=self.__class__.other2)
 
     # TODO: test ignores
 
