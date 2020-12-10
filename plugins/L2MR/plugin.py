@@ -241,7 +241,7 @@ class L2MR(callbacks.Plugin):
             return
 
         if every is None:
-            every = 600
+            every = 300
 
         now = datetime.now()
         delta = timedelta(seconds=every)
