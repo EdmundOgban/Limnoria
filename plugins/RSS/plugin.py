@@ -76,6 +76,16 @@ def get_feedName(irc, msg, args, state):
     state.args.append(args.pop(0))
 addConverter('feedName', get_feedName)
 
+
+# NOTE: Does not consume args if url is matched!
+def get_somethingButUrl(irc, msg, args, state):
+    if utils.web.urlRe.match(args[0]):
+        state.args.append("")
+    else:
+        callConverter("something", irc, msg, args, state)
+addConverter('somethingButUrl', get_somethingButUrl)
+
+
 announced_headlines_filename = \
         conf.supybot.directories.data.dirize('RSS_announced.flat')
 
@@ -106,10 +116,10 @@ class InvalidFeedUrl(ValueError):
     pass
 
 class Feed:
-    __slots__ = ('url', 'name', 'pretty_name', 'data', 'last_update',
+    __slots__ = ('url', 'name', 'display_name', 'data', 'last_update',
             'entries', 'etag', 'modified', 'initial',
             'lock', 'announced_entries', 'last_exception')
-    def __init__(self, name, pretty_name, url, initial,
+    def __init__(self, name, display_name, url, initial,
             plugin_is_loading=False, announced=None):
         assert name, name
         if not url:
@@ -117,7 +127,7 @@ class Feed:
         if not utils.web.httpUrlRe.match(url):
             raise InvalidFeedUrl(url)
         self.name = name
-        self.pretty_name = pretty_name
+        self.display_name = display_name
         self.url = url
         self.initial = initial
         self.data = None
@@ -216,8 +226,10 @@ class RSS(callbacks.Plugin):
             except registry.NonExistentRegistryEntry:
                 self.log.warning('%s is not a registered feed, removing.',name)
                 continue
+
+            display_name = self.registryValue(registry.join(['feeds', name, 'displayName']))
             try:
-                self.register_feed(name, url, True, True, announced.get(name, []))
+                self.register_feed(name, display_name, url, True, True, announced.get(name, []))
             except InvalidFeedUrl:
                 self.log.error('%s is not a valid feed, removing.', name)
                 continue
@@ -250,11 +262,10 @@ class RSS(callbacks.Plugin):
                         feed.name)
                 raise callbacks.Error(s)
 
-    def register_feed(self, name, url, initial,
+    def register_feed(self, name, display_name, url, initial,
             plugin_is_loading, announced=None):
-        pretty_name = name
         self.feed_names[name] = url
-        self.feeds[url] = Feed(name, pretty_name, url, initial,
+        self.feeds[url] = Feed(name, display_name, url, initial,
                 plugin_is_loading, announced)
 
     def remove_feed(self, feed):
@@ -450,7 +461,7 @@ class RSS(callbacks.Plugin):
         date = utils.str.timestamp(date)
         s = string.Template(template).substitute(
                 entry,
-                feed_name=feed.pretty_name,
+                feed_name=feed.display_name or feed.name,
                 date=date)
         return self._normalize_entry(s)
 
@@ -468,18 +479,17 @@ class RSS(callbacks.Plugin):
     # Commands
 
     @internationalizeDocstring
-    def add(self, irc, msg, args, pretty_name, url):
-        """<name> <url>
+    def add(self, irc, msg, args, name, display_name, url):
+        """<name> [display name] <url>
 
         Adds a command to this plugin that will look up the RSS feed at the
         given URL.
         """
-        name = pretty_name.lower()
         self.assert_feed_does_not_exist(name, url)
-        register_feed_config(name, url)
-        self.register_feed(name, pretty_name, url, True, False)
+        register_feed_config(name, display_name, url)
+        self.register_feed(name, display_name, url, True, False)
         irc.replySuccess()
-    add = wrap(add, ['feedName', 'url'])
+    add = wrap(add, ['feedName', optional("somethingButUrl"), additional('url')])
 
     @internationalizeDocstring
     def remove(self, irc, msg, args, name):
@@ -639,7 +649,7 @@ class RSS(callbacks.Plugin):
             pass
         feed = self.get_feed(url)
         if not feed:
-            feed = Feed(url, url, True)
+            feed = Feed(url, url, url, True)
         self.update_feed_if_needed(feed)
         info = feed.data
         if not info:

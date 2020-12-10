@@ -123,7 +123,7 @@ def normalize_feedName(name, lowercase=True):
     return name
 
 
-def register_feed_config(name, url=''):
+def register_feed_config(name, display_name='', url=''):
     RSS.feeds().add(name)
     conf.registerGlobalValue(RSS.feeds, name,
         registry.String(url, _("""The URL for the feed %s. Note that because
@@ -140,6 +140,9 @@ def register_feed_config(name, url=''):
             registry.NonNegativeInteger(0, _("""If set to a non-zero
             value, overrides supybot.plugins.RSS.waitPeriod for this
             particular feed.""")))
+    conf.registerGlobalValue(feed_group, 'displayName',
+            registry.String(display_name, _("""If set, a more descriptive
+            name of the feed displayed instead of the mere command name.""")))
 
 for name in RSS.feeds():
     register_feed_config(name)
