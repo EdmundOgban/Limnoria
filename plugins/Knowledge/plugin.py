@@ -162,9 +162,8 @@ class Knowledge(callbacks.Plugin):
         if out is False:
             irc.reply("not going back in time, sorry.", prefixNick=True)
         elif out:
-            _,_,_, dinfected,_,_, _,_,_, _,_,_, dtested,_,_, *span = out
-            *out, _,_,_, _,_ = out
-            ratio = dinfected / dtested * 100
+            ratio, *span = out[-3:]
+            out = out[:-6]
             irc.reply(("Italy: New cases: {} ({}{:.1f}%);"
                 " Infected: {} ({}{:.1f}%); Deaths: {} ({}{:.1f}%);"
                 " Recovered: {} ({}{:.1f}%); Infected/Tested: {:.1f}%; Span: {} day{}").format(*out, ratio, *span))

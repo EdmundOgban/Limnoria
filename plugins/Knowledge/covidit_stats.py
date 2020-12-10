@@ -128,8 +128,10 @@ def feed(msg, stats=covidit_stats):
         percent = (elem.delta - prev_elem.delta) / abs(prev_elem.delta) * 100
         out.extend([elem.delta, '+' if percent > 0 else '', percent])
 
+    out.append(cur_stat.total.delta / cur_stat.tested.delta * 100)
     day_delta = cur_stat.date - prev_stat.date
     out.extend([day_delta.days, "" if day_delta.days == 1 else "s"])
+    dump(stats)
     return out
 
 
