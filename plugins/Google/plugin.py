@@ -417,7 +417,7 @@ class Google(callbacks.PluginRegexp):
     @wrap(["text"])
     def splitsentences(self, irc, msg, args, text):
         """ <text>
-        
+
         Returns a Python list containing every sentence found in <text>"""
         lang, sentences, _ = deeptr.split_sentences("auto", text)
         irc.reply(repr(sentences))
