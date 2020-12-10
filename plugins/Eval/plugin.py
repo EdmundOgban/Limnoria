@@ -194,11 +194,11 @@ class Eval(callbacks.Plugin):
         areq = None
         ares = None
         try:
-            plaintext = 'py:{}@{}'.format(msg.host, irc.network)
+            plaintext = 'py:{}@{}:{}'.format(msg.user, msg.host, irc.network)
             areq = self.rpy_governor.request('py', plaintext)
             self.log.debug("waiting for rpy_governor")
             if areq.wait(2) is False:
-                irc.error("BAD: request to rpy_governor timed out")
+                irc.error("request to rpy_governor timed out")
                 return
 
             self.log.debug("rpy_governor answered")
@@ -249,15 +249,78 @@ class Eval(callbacks.Plugin):
             return
 
         channel = msg.args[0]
-        text = _py_parser(text)
+        #text = _py_parser(text)
         areq = None
         ares = None
         try:
-            plaintext = 'sh:{}@{}'.format(msg.host, irc.network)
+            plaintext = 'sh:{}@{}:{}'.format(msg.user, msg.host, irc.network)
             areq = self.rpy_governor.request('sh', plaintext)
             self.log.debug("waiting for rpy_governor")
             if areq.wait(2) is False:
-                irc.error("BAD: request to rpy_governor timed out")
+                irc.error("request to rpy_governor timed out")
+                return
+
+            self.log.debug("rpy_governor answered")
+            try:
+                uri = areq.value
+            except Exception as e:
+                self.log.info("".join(Pyro4.util.getPyroTraceback()))
+                raise
+
+            rpy_executor = Pyro4.Proxy(uri)
+            self.log.debug("sending execute request")
+            try:
+                executed, result = rpy_executor.execute(text)
+            except Exception as e:
+                self.log.info("".join(Pyro4.util.getPyroTraceback()))
+                raise
+
+            self.log.debug("execute request sent, waiting for async reply")
+        except Pyro4.errors.ConnectionClosedError as e:
+            irc.error("Broken pipe")
+        except Pyro4.errors.TimeoutError:
+            irc.error("Timed out")
+        else:
+            if result:
+                if executed:
+                    if len(result) <= 3:
+                        for res in result:
+                            irc.reply(res)
+                    else:
+                        s = "\n".join(result)
+                        irc.reply(s)
+                else:
+                    s = result[-1]
+                    irc.error(s)
+        finally:
+            self.pystory[channel].append(text)
+            if areq is not None:
+                areq.wait(0)
+
+            if ares is not None:
+                ares.wait(0)
+
+    # Yayks, duplicated code x2!
+    @wrap(['text'])
+    def js(self, irc, msg, args, text):
+        """<js code>
+        Evaluate javascript code using Node.js """
+        if not irc.isChannel(msg.args[0]):
+            return
+
+        if msg.args[1].startswith(irc.nick):
+            return
+
+        channel = msg.args[0]
+        #text = _py_parser(text)
+        areq = None
+        ares = None
+        try:
+            plaintext = 'js:{}@{}:{}'.format(msg.user, msg.host, irc.network)
+            areq = self.rpy_governor.request('js', plaintext)
+            self.log.debug("waiting for rpy_governor")
+            if areq.wait(2) is False:
+                irc.error("request to rpy_governor timed out")
                 return
 
             self.log.debug("rpy_governor answered")
@@ -317,7 +380,7 @@ class Eval(callbacks.Plugin):
         areq = self.rpy_governor.snapshot(plaintext_from, plaintext_to)
         self.log.info("waiting for rpy_governor")
         if areq.wait(2) is False:
-            irc.error("BAD: request to rpy_governor timed out")
+            irc.error("request to rpy_governor timed out")
 
         irc.reply(str(areq.value))
 
