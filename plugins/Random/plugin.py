@@ -38,7 +38,7 @@ import supybot.schedule as schedule
 import supybot.ircmsgs as ircmsgs
 import supybot.ircdb as ircdb
 import supybot.log as logger
-import supybot.plugins.Google.tr_langs as tr_langs
+import supybot.plugins.Google.translators.google.langs as tr_langs
 try:
     from supybot.i18n import PluginInternationalization
     _ = PluginInternationalization('Random')
@@ -55,9 +55,11 @@ import random
 import re
 import string
 import threading
+import time
 from collections import defaultdict, deque
 from time import sleep, monotonic, gmtime, strftime
 from functools import partial
+from supybot.plugins.Google.translators.deepl import translate as deepl, langs as deeplangs
 
 from . import rand
 from . import randre
@@ -68,6 +70,10 @@ DEFAULT_JAMU_LANG = "it"
 JAMU_CACHE_SIZE = 10
 
 
+class TranslationError(ValueError):
+    pass
+
+
 class MyVisitor(kyotocabinet.Visitor):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -76,20 +82,25 @@ class MyVisitor(kyotocabinet.Visitor):
     def visit_full(self, k, v):
         self.content.append((k.decode(), v.decode()))
 
+
 class KeysVisitor(MyVisitor):
     def visit_full(self, k, v):
         self.content.append(k.decode())
+
 
 class ValuesVisitor(MyVisitor):
     def visit_full(self, k, v):
         self.content.append(v.decode())
 
+
 def _db_get_content(db, visitor):
     db.iterate(visitor)
     return visitor.content
 
+
 def db_get_keys(db):
     return _db_get_content(db, KeysVisitor())
+
 
 def db_get_values(db):
     return _db_get_content(db, ValuesVisitor())
@@ -130,8 +141,7 @@ class JamuSupyGetter():
 
     def _translate_jamu(self, to_lang, text):
         google = self._check_for_google()
-        text, _ = google._translate('ja', to_lang, text)
-
+        text, _ = google._translate('ja', to_lang, text, allTranslations=True)
         return text
 
 
@@ -145,6 +155,7 @@ def _build_alphabet():
 
 HIRAGANA_ALPHABET = _build_alphabet()
 
+
 def ratto_hiragana(min_length=6, max_length=50):
     text = "".join(
         random.choices(HIRAGANA_ALPHABET, k=random.randint(min_length, max_length))
@@ -156,7 +167,14 @@ class JamuManager(JamuFactory, JamuSupyGetter):
     def __init__(self):
         self.wdbmgr = wordsdbmgr.WordsDBManager()
         self.log = logger.getPluginLogger("Random")
-        self.__suicide = False
+        self._exit = False
+
+    def _generate_hiras(self):
+        hira = ('あいうえおかがきぎくぐけげこごさざしじすずせぜそぞ'
+                'ただちぢつづてでとどなにぬねのはばぱひびぴふぶぷへべぺほ'
+                'ぼぽまみむめもゃやゅゆょよらりるれろわをんゔ')
+        regex = '[{}]{{6,50}}'.format(hira)
+        return "{}".format(randre.randre(regex))
 
     def _pre_filter(self, text):
         yoons = 'きぎき゚ひびぴしじちにみり'
@@ -191,29 +209,39 @@ class JamuManager(JamuFactory, JamuSupyGetter):
 
         return valid_jamu
 
-    def die(self):
-        self.__suicide = True
+    def exit(self):
+        self._exit = True
 
     def jamu(self, to_lang):
-        hira = ('あいうえおかがきぎくぐけげこごさざしじすずせぜそぞ'
-                'ただちぢつづてでとどなにぬねのはばぱひびぴふぶぷへべぺほ'
-                'ぼぽまみむめもゃやゅゆょよらりるれろわをんゔ')
 
-        #self.log.warning("JamuManager.jamu() __suicide:%s" % self.__suicide)
-        while not self.__suicide:
-            regex = '[{}]{{6,50}}'.format(hira)
-            hiras = "{}".format(randre.randre(regex))
+        #self.log.warning("JamuManager.jamu() _exit:%s" % self._exit)
+        max_tries = 50
+        tries = 0
+        valid_jamu = False
+        while not self._exit and tries < max_tries:
+            hiras = self._generate_hiras()
 
             if not self._pre_validator(hiras, to_lang=to_lang):
+                tries += 1
                 continue
 
             prefiltered = self._pre_filter(hiras)
-            #self.log.warning(f"prefiltered: {prefiltered}")
-            translated = self._translate_jamu(to_lang, prefiltered)
-            text = self._post_filter(translated)
+            #self.log.warning(f"try:{tries} prefiltered: {prefiltered}")
+            translations = self._translate_jamu(to_lang, prefiltered)
+            for translated in translations:
+                text = self._post_filter(translated)
+                if self._post_validator(text, to_lang=to_lang):
+                    valid_jamu = True
+                    break
+            else:
+                tries += 1
 
-            if self._post_validator(text, to_lang=to_lang):
+            if valid_jamu:
                 break
+
+        if tries == max_tries:
+            raise TranslationError("Translation not passing validators"
+                " after {} tries".format(tries))
 
         return ' '.join(text.split())
 
@@ -232,7 +260,7 @@ class UpdaterThread(threading.Thread):
         self._updater_free = threading.Event()
         self._updater_free.set()
         self._exc_queue = []
-        self.__suicide = False
+        self._exit = False
 
     def request_jamu(self, to_lang):
         if self._requested_lang != to_lang:
@@ -261,9 +289,9 @@ class UpdaterThread(threading.Thread):
 
         return jamu
 
-    def die(self):
-        self.__suicide = True
-        self.jamumgr.die()
+    def exit(self):
+        self._exit = True
+        self.jamumgr.exit()
         self._request.set()
 
     def _update_jamus(self, to_lang):
@@ -272,17 +300,17 @@ class UpdaterThread(threading.Thread):
         while len(self.jamus[to_lang]) < JAMU_CACHE_SIZE:
             #self.jamumgr.log.warning("jamus %s: %d" % (to_lang, len(self.jamus[to_lang])))
             jamu = self.jamumgr.jamu(to_lang)
-            if self.__suicide:
+            if self._exit:
                 break
             self.jamus[to_lang].append(jamu)
             self._ready.set()
 
     def run(self):
         #self.jamumgr.log.info("UpdaterThread.run()")
-        while not self.__suicide:
+        while not self._exit:
             self._request.wait()
 
-            if self.__suicide:
+            if self._exit:
                 break
 
             try:
@@ -325,7 +353,8 @@ class Random(callbacks.Plugin):
         irc.reply(randre.randre(text))
 
     def jamure(self, irc, msg, args):
-        hiras = randre.randre("[\u3041-\u3096]+")
+        # randre.randre("[\u3041-\u3096]+")
+        hiras = self.jamumgr._generate_hiras()
         text = self.jamumgr._pre_filter(hiras)
         irc.reply(text)
 
@@ -490,6 +519,18 @@ class Random(callbacks.Plugin):
             irc.reply(s)
 
     @wrap([optional("somethingWithoutSpaces")])
+    def deepjamu(self, irc, msg, args, to_lang):
+        """ [lang] """
+
+        if to_lang not in deeplangs.langs:
+            to_lang = 'it'
+
+        hiras = self.jamumgr._generate_hiras()
+        hiras = self.jamumgr._pre_filter(hiras)
+        _, _, (tr, *trs) = deepl.translate("ja", to_lang, q=hiras)
+        irc.reply(tr)
+
+    @wrap([optional("somethingWithoutSpaces")])
     def jamu(self, irc, msg, args, to_lang):
         """ [lang] """
 
@@ -551,14 +592,14 @@ class Random(callbacks.Plugin):
             for event in network.values():
                 schedule.removeEvent(event)
  
-    def die(self):
+    def exit(self):
         self.reload()
 
-        self.updater.die()
+        self.updater.exit()
         try:
             self.updater.join()
         finally:
-            super().die()
+            super().exit()
 
 Class = Random
 
