@@ -95,6 +95,18 @@ class Utilities(callbacks.Plugin):
         irc.reply(text, prefixNick=False)
     echo = wrap(echo, ['text'])
 
+    @wrap([('checkCapability', 'owner'), 'somethingWithoutSpaces', 'text'])
+    def say(self, irc, msg, args, dest, message):
+        """ [dest] <message> """
+
+        irc.reply(message, to=dest, private=not irc.isChannel(dest))
+
+    @wrap(['text'])
+    def act(self, irc, msg, args, message):
+        """ [dest] <message> """
+        dest = msg.args[0].lower()
+        irc.reply(message, to=dest, action=True)
+
     @internationalizeDocstring
     def shuffle(self, irc, msg, args, things):
         """<arg> [<arg> ...]
