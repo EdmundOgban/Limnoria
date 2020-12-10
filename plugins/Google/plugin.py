@@ -46,10 +46,11 @@ import supybot.callbacks as callbacks
 from supybot.i18n import PluginInternationalization, internationalizeDocstring
 _ = PluginInternationalization('Google')
 
-from . import tr_langs
 from . import ytsearch
-from .google import translate as gtranslate
-
+from .translators.google import translate as gtranslate
+from .translators.google import langs as tr_langs
+from .translators.deepl import translate as deeptr
+from .translators.deepl import langs as deeplangs
 from .parser import GoogleHTMLParser
 
 
@@ -310,7 +311,7 @@ class Google(callbacks.PluginRegexp):
 
         irc.reply(s)
 
-    def _translate(self, sourceLang, targetLang, text):
+    def _translate(self, sourceLang, targetLang, text, allTranslations=False):
         # headers = dict(utils.web.defaultHeaders)
         # headers['User-Agent'] = ('Mozilla/5.0 (X11; U; Linux i686) '
                                  # 'Gecko/20071127 Firefox/2.0.0.11')
@@ -342,7 +343,7 @@ class Google(callbacks.PluginRegexp):
         sourceLang, targetLang, translations = gtranslate.tr(
             sourceLang, targetLang, q=text)
         if translations:
-            return translations[0], sourceLang
+            return translations if allTranslations else translations[0], sourceLang
         else:
             return (_('No translations found.'), language)
 
@@ -369,6 +370,7 @@ class Google(callbacks.PluginRegexp):
         codes (not language names), which are listed here:
         https://cloud.google.com/translate/docs/languages
         """
+
         chanenv = ircutils.channel_env(irc, channel)
         text = ircutils.standardSubstitute(irc, msg, text, env=chanenv)
         provided_sl, provided_tl, text = self._tr_parse(text)
@@ -389,15 +391,42 @@ class Google(callbacks.PluginRegexp):
             guessed_sl, _, translations = gtranslate.tr(sl, tl, q=text)
 
         shortened = utils.str.shorten(text, 18)
-        translated = "; ".join(translations)
+        translated = "; ".join(translations[:2])
         irc.reply("Translate %s\N{rightwards arrow}%s (%s): %s"
             % (guessed_sl, tl, shortened, translated))
+
+    @wrap(["text"])
+    def sentences(self, irc, msg, args, text):
+        """ <text>
+
+        counts how many sentences are in <text>."""
+        lang, sentences, confident = deeptr.split_sentences("auto", text)
+        sentence_cnt = len(sentences)
+        langname = deeplangs.langs[lang.lower()]
+        verb, plural = ("are", "s") if sentence_cnt != 1 else ("is", "")
+        if not confident:
+            verb = "should be"
+
+        L = ["There {} {} sentence{} in that {} text".format(
+            verb, sentence_cnt, plural, langname)]
+        if not confident:
+            L.append("but I'm not sure about it")
+
+        irc.reply(", ".join(L) + ".", prefixNick=True)
+
+    @wrap(["text"])
+    def splitsentences(self, irc, msg, args, text):
+        """ <text>
+        
+        Returns a Python list containing every sentence found in <text>"""
+        lang, sentences, _ = deeptr.split_sentences("auto", text)
+        irc.reply(repr(sentences))
 
     def _rndlangs(self):
         elems = list(tr_langs.langs)
         elems.remove("auto")
         path = ["auto"]
-        top = random.randint(6, min(15, len(elems)))
+        top = random.randint(4, min(8, len(elems)))
         for _ in range(top):
             chosen = random.choice(elems)
             path.append(chosen)
@@ -426,7 +455,6 @@ class Google(callbacks.PluginRegexp):
     @wrap([optional('text')])
     def randtr(self, irc, msg, args, text):
         """ [text] """
-
         recipient = msg.args[0].lower()
         if irc.isChannel(recipient):
             if text is None:
