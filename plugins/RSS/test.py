@@ -79,15 +79,12 @@ def mock_urllib(f):
     return newf
 
 
-url = 'https://www.advogato.org/rss/articles.xml'
+#url = 'https://www.advogato.org/rss/articles.xml'
+url = 'http://rss.cnn.com/rss/edition_world.rss'
 class RSSTestCase(ChannelPluginTestCase):
     plugins = ('RSS','Plugin')
 
     timeout = 1
-
-    # FIXME
-    def setUp(self):
-        raise SkipTest
 
     def testRssAddBadName(self):
         self.assertError('rss add "foo bar" %s' % url)
