@@ -61,7 +61,7 @@ class RequestBuilder:
 
         return req
 
-    def build_tr(self, from_lang, to_lang, q, detected=False):
+    def build_translate(self, from_lang, to_lang, q, detected=False):
         req = self._build_jsonrpc("LMT_handle_jobs")
 
         from_lang = from_lang.lower()
@@ -273,7 +273,7 @@ class DeepTr:
 
     def request_translate(self, from_lang, to_lang, q, retry=0):
         self._tr_delay_if_needed()
-        payload = self.reqbuild.build_tr(from_lang, to_lang, q)
+        payload = self.reqbuild.build_translate(from_lang, to_lang, q)
         try:
             result = self.request_result(payload)
         except HTTPError as e:
@@ -330,7 +330,7 @@ class DeepTr:
         self.detected_lang = detected_lang
         self.to_lang = to_lang
         #if self.lang_confident is False and from_lang == "auto":
-        #    payload = self.reqbuild.build_tr(detected_lang, to_lang, q, detected=True)
+        #    payload = self.reqbuild.build_translate(detected_lang, to_lang, q, detected=True)
         #    self.lang_confident = self.request_result(payload)["source_lang_is_confident"]
 
         #if self.evpaste_count < 3:
