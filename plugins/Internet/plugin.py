@@ -410,7 +410,7 @@ class Internet(callbacks.Plugin):
         urlsplt[1] = "mobile.twitter.com"
         url = urlparse.urlunsplit(urlsplt)
 
-        soup = BS(self._urlget(url))
+        soup = BS(self._urlget(url), features="html.parser")
         topdoc = soup.find("table", class_="main-tweet")
         if topdoc is None:
             return
