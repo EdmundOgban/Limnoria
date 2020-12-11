@@ -139,9 +139,14 @@ class JamuSupyGetter():
         else:
             return google
 
-    def _translate_jamu(self, to_lang, text):
+    def _gtranslate_jamu(self, to_lang, text):
         google = self._check_for_google()
         text, _ = google._translate('ja', to_lang, text, allTranslations=True)
+        return text
+
+    def _deeptranslate_jamu(self, to_lang, text):
+        google = self._check_for_google()
+        text, _ = google._deeptranslate('ja', to_lang, text, allTranslations=True)
         return text
 
 
@@ -212,8 +217,7 @@ class JamuManager(JamuFactory, JamuSupyGetter):
     def exit(self):
         self._exit = True
 
-    def jamu(self, to_lang):
-
+    def jamu(self, to_lang, *, engine="google"):
         #self.log.warning("JamuManager.jamu() _exit:%s" % self._exit)
         max_tries = 50
         tries = 0
@@ -227,7 +231,13 @@ class JamuManager(JamuFactory, JamuSupyGetter):
 
             prefiltered = self._pre_filter(hiras)
             #self.log.warning(f"try:{tries} prefiltered: {prefiltered}")
-            translations = self._translate_jamu(to_lang, prefiltered)
+            if engine == "google":
+                translations = self._gtranslate_jamu(to_lang, prefiltered)
+            elif engine == "deepl":
+                translations = self._deeptranslate_jamu(to_lang, prefiltered)
+            else:
+                raise ValueError("Unknown engine: '{}'".format(engine))
+
             for translated in translations:
                 text = self._post_filter(translated)
                 if self._post_validator(text, to_lang=to_lang):
@@ -525,10 +535,9 @@ class Random(callbacks.Plugin):
         if to_lang not in deeplangs.langs:
             to_lang = 'it'
 
-        hiras = self.jamumgr._generate_hiras()
-        hiras = self.jamumgr._pre_filter(hiras)
-        _, _, (tr, *trs) = deepl.translate("ja", to_lang, q=hiras)
-        irc.reply(tr)
+        self.jamumgr.irc = irc
+        text = self.jamumgr.jamu(to_lang, engine="deepl")
+        irc.reply(text)
 
     @wrap([optional("somethingWithoutSpaces")])
     def jamu(self, irc, msg, args, to_lang):
@@ -539,7 +548,6 @@ class Random(callbacks.Plugin):
 
         self.jamumgr.irc = irc
         text = self.updater.request_jamu(to_lang)
-
         irc.reply(text)
         #irc.sendMsg(ircmsgs.privmsg(channel, text))
 
