@@ -86,13 +86,15 @@ def translate(from_lang, to_lang, *, q):
     except IndexError:
         detected_lang = transdata[1][3]
 
-    translations = transdata[1][0][0][5][0]
-    if len(translations) == 2:
-        translated, alternatives = translations
-        if translated in alternatives:
-            translations = alternatives
+    translations, to_lang, trans_id, from_lang = transdata[1]
+    if trans_id == 1:
+        translations = translations[0][5]
+        if len(translations[0]) == 1:
+            translations = translations[0]
         else:
-            translations = translated + alternatives
+            translations = [" ".join(trs[:2][1][0] for trs in translations)]
+    elif trans_id == 2:
+        translations = [trs[0] for trs in translations]
 
     return detected_lang, to_lang, translations
 
