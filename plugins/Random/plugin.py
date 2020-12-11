@@ -508,14 +508,14 @@ class Random(callbacks.Plugin):
             autojamu = lambda: self.Proxy(irc.irc, msg, ["autojamu2"])
             event_name = "autoJamu{}{}".format(irc.network, channel)
             self._events[irc.network][channel] = schedule.addPeriodicEvent(autojamu, 30, event_name)
-            self.setRegistryValue("autoJamuEnabled", True, channel)
+            self.setRegistryValue("autoJamuEnabled", True, channel, irc.network)
         elif state == "off":
             if channel in self._events[irc.network]:
                 if self._events[irc.network][channel] is not None:
                     schedule.removeEvent(self._events[irc.network][channel])
                     del self._events[irc.network][channel]
 
-            self.setRegistryValue("autoJamuEnabled", False, channel)
+            self.setRegistryValue("autoJamuEnabled", False, channel, irc.network)
 
         return self._stats(irc, channel)
 
@@ -578,7 +578,7 @@ class Random(callbacks.Plugin):
         if msg.nick != irc.nick:
             return
 
-        if self.registryValue("autoJamuEnabled", channel) is False:
+        if self.registryValue("autoJamuEnabled", channel, irc.network) is False:
             return
 
         s = self._autojamu(irc, msg, "on")
@@ -590,7 +590,7 @@ class Random(callbacks.Plugin):
         if msg.nick != irc.nick:
             return
 
-        if self.registryValue("autoJamuEnabled", channel) is False:
+        if self.registryValue("autoJamuEnabled", channel, irc.network) is False:
             return
 
         self._autojamu(irc, msg, "off")
