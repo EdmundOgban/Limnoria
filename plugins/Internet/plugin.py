@@ -47,10 +47,13 @@ import supybot.ircmsgs as ircmsgs
 import supybot.ircutils as ircutils
 import supybot.plugins as plugins
 import supybot.callbacks as callbacks
+import supybot.plugins.Google.ytsearch as ytsearch
+import supybot.plugins.Google.plugin as gplugin
 from supybot.commands import *
 from supybot.utils.iter import any as supyany
 from supybot.utils import minisix
 from supybot.i18n import PluginInternationalization, internationalizeDocstring
+
 _ = PluginInternationalization('Internet')
 
 if minisix.PY2:
@@ -69,6 +72,10 @@ TITLEABLE_URLS = set([
 YOUTUBE_URLS = set([
     "?*.youtube.com", "youtube.com", "youtu.be"
 ])
+
+
+def _title_fmt(url, title):
+    return "Title <{}>: {}".format(url, title)
 
 
 class Internet(callbacks.Plugin):
@@ -373,7 +380,7 @@ class Internet(callbacks.Plugin):
 
             if match_text:
                 title_text = html.unescape(match_text.strip().decode(charset))
-                return "Title <%s>: %s" % (utils.str.shorten(url, 45), title_text)
+                return _title_fmt(utils.str.shorten(url, 45), title_text)
 
     def _checkpoint(self):
         t = time.monotonic() - self._t
@@ -571,7 +578,18 @@ class Internet(callbacks.Plugin):
             if ((urlsplt.path.lstrip("/") or urlsplt.query)
                 and self.registryValue("ytAutoTitle", channel)):
                 if isYtUrl:
-                    text = self._title(url, youtube=True, autotitle=True)
+                    if urlsplt.netloc.endswith(".be"):
+                        videoid = urlsplt.path[1:]
+                    else:
+                        videoid = dict(urlparse.parse_qsl(urlsplt.query)).get('v')
+                        if videoid is None:
+                            return
+
+                    result = ytsearch.search(videoid)
+                    if result:
+                        url, entry = gplugin._youtube_fmt(result)
+                        text = "YouTube <{}>: {}".format(url, entry)
+                    #text = self._title(url, youtube=True, autotitle=True)
                 elif isTitleableUrl:
                     text = self._title(url, autotitle=True)
                 elif isTweetUrl: # and self.registryValue("autoTweet", channel):

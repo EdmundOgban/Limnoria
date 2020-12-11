@@ -61,6 +61,24 @@ def removeprefix(s, prefix):
     return s
 
 
+YOUTUBE_URL = "https://youtube.com"
+def _youtube_fmt(result):
+    url, kind, title, uploaded_by, verified, metrics, runtime = result
+    surl = "{}{}".format(YOUTUBE_URL, url)
+    verified = "✓" if verified is True else ""
+    if kind == "playlist":
+        desc = "{bold}{}{bold} by {}{} ({}, {} videos)".format(
+            title, verified, uploaded_by, runtime, metrics, bold="\x02")
+    elif kind == "channel":
+        desc = "{bold}{} {}{bold} - {}".format(
+            verified, title, metrics, bold="\x02")
+    elif kind in ("radio", "video"):
+        desc = "{bold}{}{bold} by {}{} ({}, {})".format(
+            title, verified, uploaded_by, runtime, metrics, bold="\x02")
+
+    return surl, desc
+
+
 class Google(callbacks.PluginRegexp):
     """This is a simple plugin to provide access to the Google services we
     all know and love from our favorite IRC bot."""
@@ -582,7 +600,6 @@ class Google(callbacks.PluginRegexp):
             irc.reply(_('Google\'s phonebook didn\'t come up with anything.'))
     phonebook = wrap(phonebook, ['text'])
 
-    _YOUTUBE_URL = "https://youtube.com"
     @wrap(['text'])
     def youtube(self, irc, msg, args, query, idx=None):
         """ <query> """
@@ -595,20 +612,8 @@ class Google(callbacks.PluginRegexp):
             irc.reply(" ".join([pre, "No results found."]))
             return
 
-        url, kind, title, uploaded_by, verified, metrics, runtime = result
-        surl = "<{}{}>".format(self._YOUTUBE_URL, url)
-        verified = "✓" if verified is True else ""
-        if kind == "playlist":
-            desc = "{bold}{}{bold} by {}{} ({}, {} videos)".format(
-                title, verified, uploaded_by, runtime, metrics, bold="")
-        elif kind == "channel":
-            desc = "{bold}{} {}{bold} - {}".format(
-                verified, title, metrics, bold="")
-        elif kind in ("radio", "video"):
-            desc = "{bold}{}{bold} by {}{} ({}, {})".format(
-                title, verified, uploaded_by, runtime, metrics, bold="")
-
-        irc.reply(" ".join([pre, surl, desc]))
+        url, entry = _youtube_fmt(result)
+        irc.reply(" ".join([pre, "<{}>".format(url), entry]))
 
     _gautocompleteUrl = 'https://suggestqueries.google.com/complete/search?client=firefox&q=%s'
     @wrap(['text'])
