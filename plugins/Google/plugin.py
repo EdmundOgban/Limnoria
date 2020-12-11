@@ -48,7 +48,7 @@ _ = PluginInternationalization('Google')
 
 from . import ytsearch
 from .translators.google import translate as gtranslate
-from .translators.google import langs as tr_langs
+from .translators.google import langs as glangs
 from .translators.deepl import translate as deeptr
 from .translators.deepl import langs as deeplangs
 from .parser import GoogleHTMLParser
@@ -347,6 +347,14 @@ class Google(callbacks.PluginRegexp):
         else:
             return (_('No translations found.'), language)
 
+    def _deeptranslate(self, sourceLang, targetLang, text, allTranslations=False):
+        sourceLang, targetLang, translations = deeptr.tr(
+            sourceLang, targetLang, q=text)
+        if translations:
+            return translations if allTranslations else translations[0], sourceLang
+        else:
+            return (_('No translations found.'), language)
+
     _lang_rex = '[a-z]{2}(?:-[A-Z]{2})?'
     _rex = re.compile('(auto|{0})?[|-]({0})?\s+(.+)'.format(_lang_rex))
     def _tr_parse(self, s):
@@ -360,6 +368,24 @@ class Google(callbacks.PluginRegexp):
             else:
                 return (sl, tl, text)
 
+    def _tr(self, default_sl, default_tl, text, *, trfunc=None, accepted_langs=[]):
+        provided_sl, provided_tl, text = self._tr_parse(text)
+        sl = provided_sl if provided_sl in accepted_langs else default_sl
+        tl = provided_tl if provided_tl in accepted_langs else default_tl
+        guessed_sl, _, translations = trfunc(sl, tl, q=text)
+        if guessed_sl == tl and not provided_tl:
+            if tl == default_tl:
+                if default_tl == "en":
+                    tl = "it"
+                elif default_tl == "it":
+                    tl = "en"
+                else:
+                    tl = "en"
+
+            guessed_sl, _, translations = trfunc(sl, tl, q=text)
+
+        return text, guessed_sl, tl, translations
+
     @internationalizeDocstring
     @wrap(["channeldb", "text"])
     def tr(self, irc, msg, args, channel, text):
@@ -370,30 +396,35 @@ class Google(callbacks.PluginRegexp):
         codes (not language names), which are listed here:
         https://cloud.google.com/translate/docs/languages
         """
-
-        chanenv = ircutils.channel_env(irc, channel)
-        text = ircutils.standardSubstitute(irc, msg, text, env=chanenv)
-        provided_sl, provided_tl, text = self._tr_parse(text)
         default_sl = self.registryValue('sourceLang', channel) or "auto"
         default_tl = self.registryValue('targetLang', channel) or "en"
-        sl = provided_sl if provided_sl in tr_langs.langs else default_sl
-        tl = provided_tl if provided_tl in tr_langs.langs else default_tl
-        guessed_sl, _, translations = gtranslate.tr(sl, tl, q=text)
-        if guessed_sl == tl and not provided_tl:
-            if tl == default_tl:
-                if default_tl == "en":
-                    tl = "it"
-                elif default_tl == "it":
-                    tl = "en"
-                else:
-                    tl = "en"
-
-            guessed_sl, _, translations = gtranslate.tr(sl, tl, q=text)
-
+        chanenv = ircutils.channel_env(irc, channel)
+        text = ircutils.standardSubstitute(irc, msg, text, env=chanenv)
+        text, sl, tl, translations = self._tr(default_sl, default_tl, text,
+            trfunc=gtranslate.tr, accepted_langs=glangs.langs)
         shortened = utils.str.shorten(text, 18)
         translated = "; ".join(translations[:2])
         irc.reply("Translate %s\N{rightwards arrow}%s (%s): %s"
-            % (guessed_sl, tl, shortened, translated))
+            % (sl, tl, shortened, translated))
+
+    @internationalizeDocstring
+    @wrap(["channeldb", "text"])
+    def deeptr(self, irc, msg, args, channel, text):
+        """[source language]-<target language> <text>
+
+        Returns <text> translated from <source language> into <target
+        language> using DeepL.
+        """
+        default_sl = self.registryValue('sourceLang', channel) or "auto"
+        default_tl = self.registryValue('targetLang', channel) or "en"
+        chanenv = ircutils.channel_env(irc, channel)
+        text = ircutils.standardSubstitute(irc, msg, text, env=chanenv)
+        text, sl, tl, translations = self._tr(default_sl, default_tl, text,
+            trfunc=deeptr.tr, accepted_langs={k.lower() for k, v in deeplangs.langs.items()})
+        shortened = utils.str.shorten(text, 18)
+        translated = "; ".join(translations[:2])
+        irc.reply("Translate %s\N{rightwards arrow}%s (%s): %s"
+            % (sl, tl, shortened, translated))
 
     @wrap(["text"])
     def sentences(self, irc, msg, args, text):
@@ -402,7 +433,7 @@ class Google(callbacks.PluginRegexp):
         counts how many sentences are in <text>."""
         lang, sentences, confident = deeptr.split_sentences("auto", text)
         sentence_cnt = len(sentences)
-        langname = deeplangs.langs[lang.lower()]
+        langname = deeplangs.langs[lang]
         verb, plural = ("are", "s") if sentence_cnt != 1 else ("is", "")
         if not confident:
             verb = "should be"
@@ -423,7 +454,7 @@ class Google(callbacks.PluginRegexp):
         irc.reply(repr(sentences))
 
     def _rndlangs(self):
-        elems = list(tr_langs.langs)
+        elems = list(glangs.langs)
         elems.remove("auto")
         path = ["auto"]
         top = random.randint(4, min(8, len(elems)))
