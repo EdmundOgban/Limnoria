@@ -39,6 +39,7 @@ import string
 import socket
 import threading
 import feedparser
+import html
 
 import urllib.parse as urlparse
 
@@ -456,6 +457,7 @@ class RSS(callbacks.Plugin):
                     self.registryValue(key_name, channel, network)
         else:
             template = self.registryValue(key_name, channel, network)
+        entry["title"] = html.unescape(entry["title"])
         date = entry.get('published_parsed')
         entry = self._remove_tracking(entry)
         date = utils.str.timestamp(date)
