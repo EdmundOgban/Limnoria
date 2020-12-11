@@ -4,6 +4,7 @@ lang_strings = (
     "DE:German",
     "FR:French",
     "ES:Spanish",
+    "IT:Italian",
     "PT:Portuguese",
     "NL:Dutch",
     "PL:Polish",
