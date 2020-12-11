@@ -545,8 +545,8 @@ class RSS(callbacks.Plugin):
             for name in feeds:
                 feed = plugin.get_feed(name)
                 if not feed:
-                    register_feed_config(name, name)
-                    plugin.register_feed(name, name, True, False)
+                    register_feed_config(name, name, name)
+                    plugin.register_feed(name, name, name, True, False)
                     feed = plugin.get_feed(name)
                 plugin.announce_feed(feed, True)
         add = wrap(add, [('checkChannelCapability', 'op'),
