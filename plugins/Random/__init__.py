@@ -54,6 +54,7 @@ from . import plugin
 from . import rand
 from . import randre
 from . import wordsdbmgr
+from supybot.plugins.Google.translators.deepl import translate as deepl, langs as deeplangs
 from imp import reload
 # In case we're being reloaded.
 reload(config)
@@ -61,7 +62,9 @@ reload(plugin)
 # Add more reloads here if you add third-party modules and want them to be
 # reloaded when this plugin is reloaded.  Don't forget to import them as well!
 reload(rand)
+reload(deepl)
 reload(randre)
+reload(deeplangs)
 reload(wordsdbmgr)
 
 if world.testing:
