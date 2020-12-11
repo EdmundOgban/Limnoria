@@ -1,3 +1,4 @@
+import json
 import urllib.parse as urlparse
 import time
 import logging
@@ -19,7 +20,7 @@ DEEPL_API = "https://www2.deepl.com/jsonrpc"
 DEEPL_STATS = "https://s.deepl.com/web/statistics"
 #DEEPL_API = "https://www.httpbin.org/post"
 DEFAULT_PREFERRED_LANGS = set(["IT", "EN"])
-DELAY_TIME = 1
+DELAY_TIME = 0
 FAKE_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:83.0) Gecko/20100101 Firefox/83.0"
 
 
@@ -31,27 +32,13 @@ def deepl_timestamp(q):
     n = q.count("i") + 1
     r = js_Datenow()
     return r + (n - (r % n))
-
+    
 
 class RequestBuilder:
 
     def __init__(self):
         self.preferred_langs = DEFAULT_PREFERRED_LANGS.copy()
         self.trid = None
-
-    def _build_jsonrpc(self, method):
-        print(f"_build_jsonrpc self.trid: {self.trid}")
-        if self.trid is None:
-            self.trid = int(1e4 * round(1e4 * random())) + 1
-
-        req = {
-            "jsonrpc": "2.0",
-            "method": method,
-            "id": self.trid
-        }
-
-        self.trid += 1
-        return req
 
     def build_relgroups(self):
         req = self._build_jsonrpc("getExperiments")
@@ -77,6 +64,7 @@ class RequestBuilder:
     def build_tr(self, from_lang, to_lang, q, detected=False):
         req = self._build_jsonrpc("LMT_handle_jobs")
 
+        from_lang = from_lang.lower()
         to_lang = to_lang.upper()
         req.update({
            "params": {
@@ -219,6 +207,27 @@ class RequestBuilder:
 
         return req
 
+    def stringify(self, req):
+        s = json.dumps(req)
+        if (self.trid + 3) % 13 == 0 or (self.trid + 5) % 29 == 0:
+            s = s.replace('method":', 'method" :')
+
+        return s
+
+    def _build_jsonrpc(self, method):
+        #print(f"_build_jsonrpc self.trid: {self.trid}")
+        if self.trid is None:
+            self.trid = int(1e4 * round(1e4 * random()))
+
+        self.trid += 1
+        req = {
+            "jsonrpc": "2.0",
+            "method": method,
+            "id": self.trid
+        }
+        return req
+
+
 class DeepTr:
     def __init__(self):
         self.reqbuild = RequestBuilder()
@@ -230,7 +239,7 @@ class DeepTr:
         }
 
         if self.cookiejar is None:
-            print("--> Filling cookie jar")
+            log.info("--> Filling cookie jar")
             resp = requests.get(DEEPL_HOMEPAGE, headers=hdrs)
             self.cookiejar = resp.cookies
             resp = requests.get(DEEPL_STATIC, headers=hdrs, cookies=self.cookiejar)
@@ -238,11 +247,12 @@ class DeepTr:
 
         hdrs.update({
             "Origin": DEEPL_HOMEPAGE,
-            "Referer": DEEPL_HOMEPAGE + "/translator",
+            "Referer": DEEPL_REFERER,
+            "Content-Type": "application/json",
         })
-
-        print(f"--> POSTing {url} payload:{payload} cookies:{self.cookiejar}")
-        resp = requests.post(url, headers=hdrs, json=payload, cookies=self.cookiejar)
+        payload = self.reqbuild.stringify(payload)
+        log.warning(f"--> POSTing {url} payload:{payload}")
+        resp = requests.post(url, headers=hdrs, data=payload, cookies=self.cookiejar)
         self.cookiejar.update(resp.cookies)
         if resp.status_code != 200:
             raise HTTPError(code=resp.status_code, msg=resp.reason, url=DEEPL_API, hdrs=hdrs, fp=None)
@@ -262,9 +272,6 @@ class DeepTr:
         return result    
 
     def request_translate(self, from_lang, to_lang, q, retry=0):
-        if self.initialized == False:
-            self._first_time_init()
-
         self._tr_delay_if_needed()
         payload = self.reqbuild.build_tr(from_lang, to_lang, q)
         try:
@@ -278,50 +285,38 @@ class DeepTr:
         else:
             return result
 
-    def send_paste_event(self):
-        if self.initialized == False:
-            raise Exception("Session is not initialized")
+    # def send_paste_event(self):
+        # payload = self.reqbuild.build_statistics(
+            # eventid=50,
+            # from_lang=self.detected_lang.lower(),
+            # to_lang=self.to_lang.lower(),
+            # sourcelang_detected=(self.from_lang == "auto"),
+            # chars_translated=self.chars_translated
+        # )
+        # self_chars_before = self.chars_translated
+        # self.chars_translated = 0
+        # self.request_data(payload, url=DEEPL_STATS)
 
-        payload = self.reqbuild.build_statistics(
-            eventid=50,
-            from_lang=self.detected_lang.lower(),
-            to_lang=self.to_lang.lower(),
-            sourcelang_detected=(self.from_lang == "auto"),
-            chars_translated=self.chars_translated
-        )
-        self_chars_before = self.chars_translated
-        self.chars_translated = 0
-        self.request_data(payload, url=DEEPL_STATS)
-
-    def send_event51(self):
-        if self.initialized == False:
-            raise Exception("Session is not initialized")
-
-        payload = self.reqbuild.build_statistics(
-            eventid=51,
-            from_lang=self.detected_lang.lower(),
-            to_lang=self.to_lang.lower(),
-            sourcelang_detected=(self.from_lang == "auto"),
-            chars_before=self.chars_before,
-            chars_translated=self.chars_translated
-        )
-        self_chars_before = self.chars_translated
-        self.chars_translated = 0
-        self.request_data(payload, url=DEEPL_STATS)
+    # def send_event51(self):
+        # payload = self.reqbuild.build_statistics(
+            # eventid=51,
+            # from_lang=self.detected_lang.lower(),
+            # to_lang=self.to_lang.lower(),
+            # sourcelang_detected=(self.from_lang == "auto"),
+            # chars_before=self.chars_before,
+            # chars_translated=self.chars_translated
+        # )
+        # self_chars_before = self.chars_translated
+        # self.chars_translated = 0
+        # self.request_data(payload, url=DEEPL_STATS)
 
     def split_sentences(self, from_lang, s):
-        if self.initialized == False:
-            self._first_time_init()
-
         payload = self.reqbuild.build_splitsentences(from_lang, s)
         result = self.request_result(payload)
         return result["lang"], result["splitted_texts"][0], result["lang_is_confident"]
 
     @lru_cache
     def translate(self, from_lang, to_lang, *, q):
-        if self.initialized == False:
-            self._first_time_init()
-
         result = self.request_translate(from_lang, to_lang, q)
         self.chars_translated += len(q)
         self.lang_confident = result["source_lang_is_confident"]
@@ -334,9 +329,7 @@ class DeepTr:
         self.from_lang = from_lang
         self.detected_lang = detected_lang
         self.to_lang = to_lang
-
         #if self.lang_confident is False and from_lang == "auto":
-        #    time.sleep(1)
         #    payload = self.reqbuild.build_tr(detected_lang, to_lang, q, detected=True)
         #    self.lang_confident = self.request_result(payload)["source_lang_is_confident"]
 
@@ -348,40 +341,40 @@ class DeepTr:
         self.reqbuild.preferred_langs.update([detected_lang.upper(), to_lang.upper()]) 
         return detected_lang.lower(), to_lang.lower(), translations
 
-    def _first_time_init(self):
-        hdrs = {
-            "User-Agent": FAKE_UA,
-            "Origin": DEEPL_HOMEPAGE,
-            "Referer": DEEPL_HOMEPAGE + "/translator",
-        }
-        payload = self.reqbuild.build_relgroups()
-        #print(f"--> POSTing https://s.deepl.com/web/release-groups payload:{payload}")
-        #resp = requests.post("https://s.deepl.com/web/release-groups",
-        #    headers=hdrs, json=payload)
-        #result = resp.json().get("result")
-        #if result is None:
-        #    raise IOError("No 'result' in JSON data.")
+    # def _first_time_init(self):
+        # hdrs = {
+            # "User-Agent": FAKE_UA,
+            # "Origin": DEEPL_HOMEPAGE,
+            # "Referer": DEEPL_HOMEPAGE + "/translator",
+        # }
+        # payload = self.reqbuild.build_relgroups()
+        # print(f"--> POSTing https://s.deepl.com/web/release-groups payload:{payload}")
+        # resp = requests.post("https://s.deepl.com/web/release-groups",
+           # headers=hdrs, json=payload)
+        # result = resp.json().get("result")
+        # if result is None:
+           # raise IOError("No 'result' in JSON data.")
 
-        #self.reqbuild.client_experiments.extend(result["clientExperiments"])
-        payload = self.reqbuild.build_clientstate()
-        #print(f"--> POSTing https://www.deepl.com/PHP/backend/clientState.php?request_type=jsonrpc&il=IT payload:{payload}")
-        #requests.post("https://www.deepl.com/PHP/backend/clientState.php?request_type=jsonrpc&il=IT",
-        #    headers=hdrs, json=payload)
-        #payload = self.reqbuild.build_statistics(eventid=1)
-        #print(f"--> POSTing {DEEPL_STATS} payload:{payload}")
-        #requests.post(DEEPL_STATS, headers=hdrs, json=payload)
-        self.initialized = True
+        # self.reqbuild.client_experiments.extend(result["clientExperiments"])
+        # payload = self.reqbuild.build_clientstate()
+        # print(f"--> POSTing https://www.deepl.com/PHP/backend/clientState.php?request_type=jsonrpc&il=IT payload:{payload}")
+        # requests.post("https://www.deepl.com/PHP/backend/clientState.php?request_type=jsonrpc&il=IT",
+           # headers=hdrs, json=payload)
+        # payload = self.reqbuild.build_statistics(eventid=1)
+        # print(f"--> POSTing {DEEPL_STATS} payload:{payload}")
+        # requests.post(DEEPL_STATS, headers=hdrs, json=payload)
+        # self.initialized = True
 
-    @staticmethod
-    def _fragment(s):
-        end = 0
-        top = len(s)
-        while True:
-            args = (1, 1) if end == 0 else (2, 4)
-            end += round(uniform(*args))
-            yield s[:end]
-            if end >= top:
-                break
+    # @staticmethod
+    # def _fragment(s):
+        # end = 0
+        # top = len(s)
+        # while True:
+            # args = (1, 1) if end == 0 else (2, 4)
+            # end += round(uniform(*args))
+            # yield s[:end]
+            # if end >= top:
+                # break
 
     def _tr_delay_if_needed(self):
         lasttr = self.reqbuild.dt_lasttr
@@ -396,7 +389,6 @@ class DeepTr:
         return delayed
 
     def reset(self, dt=None):
-        self.initialized = False
         self.cookiejar = None
         self.sessid = None
         self.lang_confident = False       
