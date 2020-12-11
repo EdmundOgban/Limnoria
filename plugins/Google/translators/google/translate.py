@@ -65,8 +65,10 @@ def build_request(from_lang, to_lang, q):
 
 def gsection(s):
     sectlen, s = s.split("\n", 1)
-    sectlen = int(sectlen)-1
-    return s[:sectlen], s[sectlen:] 
+    sectlen = int(sectlen) - 1
+    # Realign section length according to UTF-16 codepoints
+    sectlen -= sum(1 for c in s[:sectlen] if ord(c) > 0xFFFF)
+    return s[:sectlen], s[sectlen:]
 
 
 def gunpack(s):
