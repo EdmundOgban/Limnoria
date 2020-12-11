@@ -49,12 +49,13 @@ from . import config
 from . import plugin
 from . import ytsearch
 from .translators.google import translate, langs
-from .translators.deepl import translate as deeptr
+from .translators.deepl import translate as deeptr, langs as deeplangs
 from importlib import reload
 reload(plugin) # In case we're being reloaded.
 # Add more reloads here if you add third-party modules and want them to be
 # reloaded when this plugin is reloaded.  Don't forget to import them as well!
 reload(langs)
+reload(deeplangs)
 reload(translate)
 reload(deeptr)
 reload(ytsearch)
