@@ -487,6 +487,8 @@ class Google(callbacks.PluginRegexp):
         text = ' '.join(msg.args[1:])
         if not irc.isChannel(msg.args[0]):
             return
+        if len(msg.args) < 4: # To avoid too short messages
+            return
 
         if callbacks.addressed(irc, msg):
             return
